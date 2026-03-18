@@ -24,6 +24,8 @@ interface Booking {
   special: string
   tm30: boolean
   booking_ref: string
+  passport_url?: string
+  tm30_url?: string
 }
 
 const EMPTY: Booking = {
@@ -32,6 +34,7 @@ const EMPTY: Booking = {
   source: 'Direct', gross: 0, comm: 0, net_income: 0,
   status: 'Upcoming', clean_status: 'Needs Cleaning',
   special: '', tm30: false, booking_ref: '',
+  passport_url: '', tm30_url: '',
 }
 
 interface Props {
@@ -40,10 +43,15 @@ interface Props {
   onSaved: () => void
 }
 
+const BUCKET = 'booking-docs'
+
 export default function BookingModal({ booking, onClose, onSaved }: Props) {
   const [form, setForm] = useState<Booking>(booking ?? EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [passportFile, setPassportFile] = useState<File | null>(null)
+  const [tm30File, setTm30File] = useState<File | null>(null)
+  const [uploadStatus, setUploadStatus] = useState('')
 
   useEffect(() => {
     if (form.checkin && form.checkout) {
@@ -61,6 +69,19 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     })
   }
 
+  async function uploadFile(supabase: ReturnType<typeof createClient>, bookingId: number, file: File, pathKey: 'passport' | 'tm30') {
+    const ext = file.name.split('.').pop() ?? 'bin'
+    const path = `${bookingId}/${pathKey}.${ext}`
+    const { error: uploadErr } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, file, { upsert: true })
+    if (uploadErr) {
+      console.error('Upload error:', uploadErr)
+      return null
+    }
+    return path
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -69,20 +90,54 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     const payload = { ...form, nights: calcNights(form.checkin, form.checkout), net_income: form.gross - form.comm }
     delete (payload as { id?: number }).id
 
-    const { error: err } = booking?.id
-      ? await supabase.from('bookings').update(payload).eq('id', booking.id)
-      : await supabase.from('bookings').insert(payload)
+    let bookingId = booking?.id
 
-    if (err) { setError(err.message); setSaving(false) }
-    else { onSaved() }
+    if (booking?.id) {
+      const { error: err } = await supabase.from('bookings').update(payload).eq('id', booking.id)
+      if (err) { setError(err.message); setSaving(false); return }
+    } else {
+      const { data, error: err } = await supabase.from('bookings').insert(payload).select('id').single()
+      if (err) { setError(err.message); setSaving(false); return }
+      bookingId = data.id
+    }
+
+    // Upload documents
+    if ((passportFile || tm30File) && bookingId) {
+      setUploadStatus('Uploading files…')
+      const updates: Partial<Booking> = {}
+
+      if (passportFile) {
+        const path = await uploadFile(supabase, bookingId, passportFile, 'passport')
+        if (path) updates.passport_url = path
+      }
+      if (tm30File) {
+        const path = await uploadFile(supabase, bookingId, tm30File, 'tm30')
+        if (path) updates.tm30_url = path
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('bookings').update(updates).eq('id', bookingId)
+      }
+    }
+
+    onSaved()
   }
 
   async function handleDelete() {
     if (!booking?.id) return
     if (!confirm('Delete this booking?')) return
     const supabase = createClient()
+    // Clean up stored files first
+    if (booking.passport_url) await supabase.storage.from(BUCKET).remove([booking.passport_url])
+    if (booking.tm30_url) await supabase.storage.from(BUCKET).remove([booking.tm30_url])
     await supabase.from('bookings').delete().eq('id', booking.id)
     onSaved()
+  }
+
+  async function openFile(path: string) {
+    const supabase = createClient()
+    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
   const inputStyle = {
@@ -99,6 +154,63 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
       {el}
     </div>
   )
+
+  function FileSlot({
+    label,
+    accept,
+    storedPath,
+    selectedFile,
+    onSelect,
+  }: {
+    label: string
+    accept: string
+    storedPath?: string
+    selectedFile: File | null
+    onSelect: (f: File | null) => void
+  }) {
+    return (
+      <div className="rounded-xl p-3" style={{ background: 'var(--surface2)', border: '1px solid #3a2d50' }}>
+        <p className="text-xs mb-2" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>{label}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {storedPath && (
+            <button
+              type="button"
+              onClick={() => openFile(storedPath)}
+              className="text-xs px-2.5 py-1 rounded-lg"
+              style={{ background: 'rgba(75,0,165,0.2)', color: 'var(--accent2)', border: '1px solid rgba(75,0,165,0.4)' }}
+            >
+              View
+            </button>
+          )}
+          <label
+            className="text-xs px-2.5 py-1 rounded-lg cursor-pointer"
+            style={{ background: 'var(--surface)', border: '1px solid #3a2d50', color: 'var(--text)' }}
+          >
+            {storedPath ? 'Replace' : 'Upload'}
+            <input
+              type="file"
+              accept={accept}
+              className="hidden"
+              onChange={e => onSelect(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {selectedFile && (
+            <span className="text-xs truncate max-w-[10rem]" style={{ color: 'var(--green)' }} title={selectedFile.name}>
+              ✓ {selectedFile.name}
+            </span>
+          )}
+          {!selectedFile && storedPath && (
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              {storedPath.split('/').pop()}
+            </span>
+          )}
+          {!selectedFile && !storedPath && (
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>No file</span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -185,7 +297,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             </select>
           )}
 
-          {/* TM30 */}
+          {/* TM30 checkbox */}
           <div className="flex items-center gap-2" style={{ paddingTop: '1.25rem' }}>
             <input
               type="checkbox"
@@ -209,7 +321,31 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             />
           </div>
 
+          {/* Documents */}
+          <div className="col-span-2">
+            <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>
+              Documents
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <FileSlot
+                label="Passport / ID photo"
+                accept="image/*,application/pdf"
+                storedPath={form.passport_url || undefined}
+                selectedFile={passportFile}
+                onSelect={setPassportFile}
+              />
+              <FileSlot
+                label="TM30 PDF"
+                accept="application/pdf"
+                storedPath={form.tm30_url || undefined}
+                selectedFile={tm30File}
+                onSelect={setTm30File}
+              />
+            </div>
+          </div>
+
           {error && <p className="col-span-2 text-sm" style={{ color: 'var(--red)' }}>{error}</p>}
+          {uploadStatus && <p className="col-span-2 text-xs" style={{ color: 'var(--muted)' }}>{uploadStatus}</p>}
 
           {/* Actions */}
           <div className="col-span-2 flex items-center justify-between gap-3 pt-2">
@@ -238,7 +374,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
                 className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50"
                 style={{ background: 'var(--accent)', color: '#fff' }}
               >
-                {saving ? 'Saving…' : booking?.id ? 'Save Changes' : 'Add Booking'}
+                {saving ? (uploadStatus || 'Saving…') : booking?.id ? 'Save Changes' : 'Add Booking'}
               </button>
             </div>
           </div>
