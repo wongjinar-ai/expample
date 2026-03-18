@@ -1,6 +1,6 @@
 # Planning Document — Himmapun Retreat Hotel Operations App
 
-## Status: Draft
+## Status: Ready to build
 **Last updated:** 2026-03-18
 
 ---
@@ -225,6 +225,65 @@ Browser                         Next.js API Route              Anthropic
 3. Clean and transform dates to `YYYY-MM-DD` format
 4. Import via Supabase dashboard CSV import tool (no code needed)
 5. Verify row counts match after import
+
+---
+
+## Prerequisites — Before Starting Phase 1
+
+Node.js is required to run the project. It is not yet installed on this machine.
+
+### Install Node.js (do this first)
+
+**Option A — via nvm (recommended):**
+```bash
+# 1. Install nvm (Node Version Manager)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+# 2. Restart your terminal, then install the LTS version of Node
+nvm install --lts
+
+# 3. Verify installation
+node -v && npm -v
+```
+
+**Option B — direct download:**
+Go to https://nodejs.org and download the LTS installer for macOS.
+
+Once `node -v` and `npm -v` both return version numbers, Node is ready.
+
+---
+
+### Scaffold the Project (run after Node is installed)
+
+From the repo root (`/Users/macbookairm1/Documents/Github/expample`):
+
+```bash
+npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --no-git
+```
+
+Then install Supabase and Anthropic packages:
+```bash
+npm install @supabase/supabase-js @supabase/ssr @anthropic-ai/sdk
+```
+
+Create the environment file:
+```bash
+cp .env.example .env.local
+```
+
+Add these keys to `.env.local` (get values from Supabase dashboard and Anthropic console):
+```
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
+```
+
+Run the dev server:
+```bash
+npm run dev
+```
+
+App will be available at http://localhost:3000
 
 ---
 
