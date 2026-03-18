@@ -117,6 +117,15 @@ interface Booking {
 
 ---
 
+## Deployment URLs
+
+| Environment | URL |
+|-------------|-----|
+| Production (Vercel) | https://expample-lake.vercel.app |
+| Local dev | http://localhost:3000 |
+
+---
+
 ## Supabase Credentials & Tokens
 
 | Key | Where to find it | Where it lives |
