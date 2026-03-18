@@ -95,7 +95,7 @@ Here is what your daily workflow looks like:
 
 ```mermaid
 flowchart TD
-    Start([Start working]) --> Pull[git pull get latest code]
+    Start[Start working] --> Pull[git pull get latest code]
     Pull --> Code[Write code in VS Code]
     Code --> Check[git status see what changed]
     Check --> Stage[git add . stage all changes]
@@ -104,7 +104,7 @@ flowchart TD
     Push --> Vercel[Vercel auto-deploys live in ~1 minute]
     Vercel --> More{More to do?}
     More -->|Yes| Code
-    More -->|No| Done([Done for the day])
+    More -->|No| Done[Done for the day]
 ```
 
 ---

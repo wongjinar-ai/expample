@@ -39,13 +39,13 @@ The actual values live in `.env.local` — a file that is never sent to GitHub.
 
 ```mermaid
 flowchart TD
-    EnvFile[".env.local on your laptop"]
-    Code["Your code uses process.env.NEXT_PUBLIC_SUPABASE_URL"]
-    Runtime["App reads the variable at runtime"]
+    EnvFile[.env.local on your laptop]
+    Code[Your code uses process.env.NEXT_PUBLIC_SUPABASE_URL]
+    Runtime[App reads the variable at runtime]
 
     EnvFile --> Runtime
     Code --> Runtime
-    Runtime --> Value["Gets the actual URL value"]
+    Runtime --> Value[Gets the actual URL value]
 ```
 
 ---
@@ -81,11 +81,11 @@ The `.gitignore` file tells Git to ignore certain files. Your `.env.local` must 
 
 ```mermaid
 flowchart LR
-    Files["All files in your project"]
-    Gitignore{".gitignore rules"}
+    Files[All files in your project]
+    Gitignore{.gitignore rules}
     Files --> Gitignore
-    Gitignore -->|"included"| GitHub["Sent to GitHub - (safe to share)"]
-    Gitignore -->|"ignored"| Hidden["Never sent - (.env.local, node_modules)"]
+    Gitignore -->|"included"| GitHub[Sent to GitHub safe to share]
+    Gitignore -->|"ignored"| Hidden[Never sent .env.local node_modules]
 ```
 
 Next.js adds `.env.local` to `.gitignore` automatically when you create the project.
@@ -118,16 +118,16 @@ This file IS committed to GitHub. It shows which variables are needed, without r
 In Next.js, environment variables have different visibility depending on their name:
 
 ```mermaid
-graph TD
-    EnvVars["Environment Variables"]
-    EnvVars --> Public["NEXT_PUBLIC_SUPABASE_URL - NEXT_PUBLIC_SUPABASE_ANON_KEY"]
-    EnvVars --> Private["SUPABASE_SERVICE_ROLE_KEY"]
+flowchart TD
+    EnvVars[Environment Variables]
+    EnvVars --> Public[NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY]
+    EnvVars --> Private[SUPABASE_SERVICE_ROLE_KEY]
 
-    Public --> Browser["Available in browser - (JavaScript on user's device)"]
-    Public --> Server["Available on server - (Next.js API routes)"]
+    Public --> Browser[Available in browser JavaScript on user device]
+    Public --> Server[Available on server Next.js API routes]
 
-    Private --> ServerOnly["Server-side ONLY - (never in the browser)"]
-    Private --> BrowserNone["NOT available in browser - (would be undefined)"]
+    Private --> ServerOnly[Server-side ONLY never in the browser]
+    Private --> BrowserNone[NOT available in browser would be undefined]
 ```
 
 | Prefix | Visible in browser? | Use for |
@@ -144,13 +144,13 @@ The `SUPABASE_SERVICE_ROLE_KEY` has no `NEXT_PUBLIC_` prefix because it must nev
 You have three "environments" — three places your app runs:
 
 ```mermaid
-graph TD
-    Local["Local Development - (your laptop)"]
-    Preview["Preview Deployments - (Vercel, feature branches)"]
-    Production["Production - (Vercel, main branch)"]
+flowchart TD
+    Local[Local Development your laptop]
+    Preview[Preview Deployments Vercel feature branches]
+    Production[Production Vercel main branch]
 
-    Local -->|"reads from"| EnvLocal[".env.local"]
-    Preview -->|"reads from"| VercelSettings["Vercel Dashboard - Environment Variables"]
+    Local -->|"reads from"| EnvLocal[.env.local]
+    Preview -->|"reads from"| VercelSettings[Vercel Dashboard Environment Variables]
     Production -->|"reads from"| VercelSettings
 ```
 
@@ -177,11 +177,11 @@ You set Vercel's variables once in the dashboard. They do not need to be committ
 
 ```mermaid
 flowchart TD
-    Start["App starts"] --> Check{Is NEXT_PUBLIC_SUPABASE_URL set?}
-    Check -->|Yes| Works["App connects to Supabase normally"]
-    Check -->|No| Error["process.env.NEXT_PUBLIC_SUPABASE_URL is undefined"]
-    Error --> Crash["Supabase client fails to initialize"]
-    Crash --> Symptom["Error in browser: Invalid URL"]
+    Start[App starts] --> Check{Is NEXT_PUBLIC_SUPABASE_URL set?}
+    Check -->|Yes| Works[App connects to Supabase normally]
+    Check -->|No| Error[process.env.NEXT_PUBLIC_SUPABASE_URL is undefined]
+    Error --> Crash[Supabase client fails to initialize]
+    Crash --> Symptom[Error in browser Invalid URL]
 ```
 
 If you see errors about "Invalid URL" or "undefined" when the app starts, a missing environment variable is usually the cause.

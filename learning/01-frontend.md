@@ -14,14 +14,14 @@ Think of it like this:
 
 ```mermaid
 flowchart TD
-    A([User types a URL in browser]) --> B([Browser sends a request])
-    B --> C([Server sends back HTML, CSS, JavaScript])
-    C --> D([Browser reads the HTML — the skeleton])
-    D --> E([Browser applies CSS — the styling])
-    E --> F([Browser runs JavaScript — the behaviour])
-    F --> G([User sees the finished page])
-    G --> H([User clicks something])
-    H --> I([JavaScript reacts and updates the page])
+    A[User types a URL in browser] --> B[Browser sends a request]
+    B --> C[Server sends back HTML, CSS, JavaScript]
+    C --> D[Browser reads the HTML — the skeleton]
+    D --> E[Browser applies CSS — the styling]
+    E --> F[Browser runs JavaScript — the behaviour]
+    F --> G[User sees the finished page]
+    G --> H[User clicks something]
+    H --> I[JavaScript reacts and updates the page]
 ```
 
 The three building blocks of every webpage:

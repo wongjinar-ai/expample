@@ -85,16 +85,16 @@ The user gets served by the nearest server — so the app loads fast regardless 
 
 ```mermaid
 flowchart TD
-    A([Go to vercel.com]) --> B([Sign up with GitHub])
-    B --> C([Click Add New Project])
-    C --> D([Select your GitHub repo])
-    D --> E([Vercel detects Next.js automatically])
-    E --> F([Add Environment Variables])
-    F --> G([Click Deploy])
+    A[Go to vercel.com] --> B[Sign up with GitHub]
+    B --> C[Click Add New Project]
+    C --> D[Select your GitHub repo]
+    D --> E[Vercel detects Next.js automatically]
+    E --> F[Add Environment Variables]
+    F --> G[Click Deploy]
     G --> H{Build passes?}
-    H -->|Yes| I([Your app is live!])
-    H -->|No| J([Read build logs])
-    J --> K([Fix the error])
+    H -->|Yes| I[Your app is live!]
+    H -->|No| J[Read build logs]
+    J --> K[Fix the error]
     K --> G
 ```
 

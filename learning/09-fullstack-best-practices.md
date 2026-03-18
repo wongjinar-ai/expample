@@ -5,13 +5,13 @@
 A **full stack** app has both a frontend (what users see) and a backend (the server and database). Your Himmapun Retreat app is full stack:
 
 ```mermaid
-graph TD
-    subgraph Frontend["Frontend (Next.js + React)"]
-        UI["Pages & Components - (what staff see and click)"]
+flowchart TD
+    subgraph Frontend[Frontend Next.js and React]
+        UI[Pages and Components what staff see and click]
     end
-    subgraph Backend["Backend (Next.js API Routes + Supabase)"]
-        API["API Routes - (server logic)"]
-        DB["PostgreSQL Database - (data storage)"]
+    subgraph Backend[Backend Next.js API Routes and Supabase]
+        API[API Routes server logic]
+        DB[PostgreSQL Database data storage]
     end
 
     UI -->|"HTTP requests"| API
@@ -47,14 +47,14 @@ From your `CLAUDE.md`:
 
 ```mermaid
 flowchart TD
-    Secret["Secret key (Supabase password)"]
-    Secret -->|"Wrong"| Code["Written in code - (committed to GitHub)"]
-    Secret -->|"Right"| EnvFile[".env.local - (never committed)"]
+    Secret[Secret key Supabase password]
+    Secret -->|"Wrong"| Code[Written in code committed to GitHub]
+    Secret -->|"Right"| EnvFile[.env.local never committed]
 
-    Code --> GitHub["GitHub (public)"]
-    GitHub --> Disaster["Anyone can steal your data"]
+    Code --> GitHub[GitHub public]
+    GitHub --> Disaster[Anyone can steal your data]
 
-    EnvFile --> Safe["Only on your machine - (and Vercel's secure storage)"]
+    EnvFile --> Safe[Only on your machine and Vercel secure storage]
 ```
 
 - API keys, database passwords, and service role keys go in `.env.local`
@@ -152,7 +152,7 @@ Your app fetches data from Supabase — this takes time. Always show something w
 // Three states every data-fetching component should handle
 const [loading, setLoading] = useState(true);
 const [error, setError] = useState<string | null>(null);
-const [bookings, setBookings] = useState<Booking[]>([]);
+const [bookings, setBookings] = useState<Booking[]>[];
 
 // In the component render
 if (loading) return <p>Loading...</p>;
@@ -215,11 +215,11 @@ Do not wait until the app is "finished" to deploy. Deploy a skeleton on day one.
 
 ```mermaid
 flowchart LR
-    M0["M0: Just a blank page - (deployed to Vercel)"]
-    M1["M1: Login works - (deployed)"]
-    M2["M2: Bookings CRUD - (deployed)"]
-    M3["M3: Dashboard - (deployed)"]
-    Final["Final: All features - (already deployed)"]
+    M0[M0 Just a blank page deployed to Vercel]
+    M1[M1 Login works deployed]
+    M2[M2 Bookings CRUD deployed]
+    M3[M3 Dashboard deployed]
+    Final[Final All features already deployed]
 
     M0 --> M1 --> M2 --> M3 --> Final
 ```
@@ -258,12 +258,12 @@ This deserves its own rule because the consequences are severe:
 
 ```mermaid
 flowchart TD
-    ServiceKey["SUPABASE_SERVICE_ROLE_KEY - (bypasses ALL security)"]
-    ServiceKey -->|"if leaked"| Anyone["Anyone can read, write, - delete all your data"]
-    ServiceKey -->|"correct usage"| LocalOnly["Only on your laptop - Only in .env.local - Only for /new-booking command"]
-    LocalOnly -->|"never"| GitHub["GitHub"]
-    LocalOnly -->|"never"| Vercel["Vercel"]
-    LocalOnly -->|"never"| AppCode["App source code"]
+    ServiceKey[SUPABASE_SERVICE_ROLE_KEY bypasses ALL security]
+    ServiceKey -->|"if leaked"| Anyone[Anyone can read write delete all your data]
+    ServiceKey -->|"correct usage"| LocalOnly[Only on your laptop Only in .env.local Only for /new-booking command]
+    LocalOnly -->|"never"| GitHub[GitHub]
+    LocalOnly -->|"never"| Vercel[Vercel]
+    LocalOnly -->|"never"| AppCode[App source code]
 ```
 
 ---
@@ -272,17 +272,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    User["Staff Member - (browser on phone)"]
+    User[Staff Member browser on phone]
 
-    subgraph Next["Next.js App (Vercel)"]
-        Page["React Page - (renders UI)"]
-        API["API Route - (server logic if needed)"]
+    subgraph Next[Next.js App on Vercel]
+        Page[React Page renders UI]
+        API[API Route server logic if needed]
     end
 
-    subgraph Supa["Supabase"]
-        Auth["Auth - (session check)"]
-        RLS["Row Level Security - (permission check)"]
-        DB["PostgreSQL - (data storage)"]
+    subgraph Supa[Supabase]
+        Auth[Auth session check]
+        RLS[Row Level Security permission check]
+        DB[PostgreSQL data storage]
     end
 
     User --> Page

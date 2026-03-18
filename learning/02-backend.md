@@ -36,15 +36,15 @@ The user never touches the database directly. The backend sits in the middle, ac
 
 ```mermaid
 flowchart TD
-    A([Request arrives from browser]) --> B{Is user logged in?}
-    B -->|No| C([Return 401 Unauthorized])
+    A[Request arrives from browser] --> B{Is user logged in?}
+    B -->|No| C[Return 401 Unauthorized]
     B -->|Yes| D{What are they asking for?}
-    D -->|GET /bookings| E([Read from database])
-    D -->|POST /bookings| F([Validate data])
+    D -->|GET /bookings| E[Read from database]
+    D -->|POST /bookings| F[Validate data]
     F --> G{Is data valid?}
-    G -->|No| H([Return error message])
-    G -->|Yes| I([Write to database])
-    E --> J([Return JSON data])
+    G -->|No| H[Return error message]
+    G -->|Yes| I[Write to database]
+    E --> J[Return JSON data]
     I --> J
 ```
 
