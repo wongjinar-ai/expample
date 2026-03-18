@@ -53,9 +53,11 @@ For the sidebar logo area, display the logo image instead of the 🐸 emoji.
 
 | Font | Variable | Usage |
 |------|----------|-------|
-| Fraunces | `var(--font-fraunces)` | Display headings, brand name |
-| DM Sans | `var(--font-dm-sans)` | Body text, UI labels |
-| DM Mono | `var(--font-dm-mono)` | Data, numbers, dates, codes |
+| Fraunces | `var(--font-fraunces)` | Brand name in logo area only |
+| DM Sans | `var(--font-dm-sans)` | Body text, UI labels, nav items |
+| DM Mono | `var(--font-dm-mono)` | **Headings, room names, prices, dates, data** — the website uses a typewriter/monospace font prominently for all headings |
+
+**Important:** The himmapun.com website uses a monospace/typewriter font for room headings ("Tent", "Bungalow") and prices ("฿200/night"). DM Mono should be used for section headings and all monetary values in the app.
 
 All fonts loaded from Google Fonts in `src/app/layout.tsx`.
 
@@ -70,6 +72,8 @@ All fonts loaded from Google Fonts in `src/app/layout.tsx`.
 5. **Rounded corners** — use `rounded-xl` (12px) for cards/buttons, `rounded-2xl` (16px) for large containers.
 6. **Subtle borders** — use `#2e2040` or `#3a2d50` for card/input borders — just enough to define edges.
 7. **Thai natural feel** — minimal, clean, no heavy gradients. Inspired by a natural retreat.
+8. **Monospace for data & headings** — DM Mono for prices (฿), room names, section titles, dates. Mirrors the website's typewriter aesthetic.
+9. **Prices** — always show the ฿ symbol, use DM Mono, use `var(--accent2)` (#ff87ff pink) or white for emphasis.
 
 ---
 

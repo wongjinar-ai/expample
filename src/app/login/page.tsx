@@ -34,24 +34,27 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
 
         {/* Logo */}
-        <div className="mb-8 flex justify-center">
+        <div className="mb-8 text-center">
           <div
-            className="rounded-2xl overflow-hidden"
-            style={{ width: '200px', background: 'var(--accent)' }}
+            className="inline-block rounded-2xl overflow-hidden mb-3"
+            style={{ width: '160px', background: 'var(--accent)' }}
           >
             <Image
               src="/himmapun-logo.png"
               alt="Himmapun Retreat"
-              width={200}
-              height={200}
+              width={160}
+              height={160}
               priority
             />
           </div>
+          <p className="text-xs uppercase tracking-widest" style={{ color: 'var(--accent2)', fontFamily: 'var(--font-dm-mono)' }}>
+            Simple Natural Living
+          </p>
         </div>
 
         {/* Card */}
         <div className="rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid #2e2040' }}>
-          <h2 className="text-lg font-medium mb-6" style={{ color: 'var(--text)' }}>Sign in</h2>
+          <h2 className="text-lg font-medium mb-6" style={{ color: 'var(--text)', fontFamily: 'var(--font-dm-mono)' }}>Sign in</h2>
 
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
