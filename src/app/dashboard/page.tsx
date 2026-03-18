@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { createClient } from '@/lib/supabase/client'
 import { fmtMoney } from '@/lib/helpers'
-import { OCC_ROOMS } from '@/lib/constants'
+import { OCC_ROOMS, ROOM_TYPES } from '@/lib/constants'
+import type { Room } from '@/lib/constants'
 
 interface Booking {
   id: number
@@ -32,15 +33,70 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function shortDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
+const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
+  'Direct':      { bg: 'rgba(74,222,128,0.15)',  color: '#4ade80' },
+  'Booking.com': { bg: 'rgba(96,165,250,0.15)',  color: '#60a5fa' },
+  'Agoda':       { bg: 'rgba(251,191,36,0.15)',  color: '#fbbf24' },
+  'Airbnb':      { bg: 'rgba(255,135,255,0.15)', color: '#ff87ff' },
+  'Other':       { bg: 'rgba(155,143,176,0.15)', color: '#9b8fb0' },
 }
 
-const CELL_COLORS: Record<string, { bg: string; color: string }> = {
-  'Check-in':  { bg: 'rgba(74,222,128,0.25)',  color: '#4ade80' },
-  'Occupied':  { bg: 'rgba(96,165,250,0.25)',  color: '#60a5fa' },
-  'Checkout':  { bg: 'rgba(251,191,36,0.25)',  color: '#fbbf24' },
-  'Upcoming':  { bg: 'rgba(96,165,250,0.15)',  color: '#60a5fa' },
+function GuestRow({ b, accent }: { b: Booking; accent: string }) {
+  const type = ROOM_TYPES[b.room as Room] ?? ''
+  const src = SOURCE_COLORS[b.source] ?? { bg: 'rgba(155,143,176,0.15)', color: '#9b8fb0' }
+  const avatarBg = accent === '#4ade80' ? 'rgba(74,222,128,0.18)' : 'rgba(251,191,36,0.18)'
+  return (
+    <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div
+        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-semibold"
+        style={{ background: avatarBg, color: accent, fontFamily: 'var(--font-dm-mono)' }}
+      >
+        {b.guest.trim().charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm truncate" style={{ color: 'var(--text)' }}>{b.guest}</p>
+        <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>
+          {b.room} · {type} · {b.guests} guest{b.guests !== 1 ? 's' : ''}
+        </p>
+      </div>
+      <span className="text-xs px-2.5 py-1 rounded-lg shrink-0" style={{ background: src.bg, color: src.color }}>
+        {b.source}
+      </span>
+    </div>
+  )
+}
+
+function TodayPanel({
+  title,
+  accent,
+  bookings,
+  emptyMsg,
+}: {
+  title: string
+  accent: string
+  bookings: Booking[]
+  emptyMsg: string
+}) {
+  return (
+    <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid #2e2040' }}>
+      <div className="w-1 shrink-0" style={{ background: accent }} />
+      <div className="flex-1 min-w-0">
+        <div className="px-4 py-3" style={{ background: 'var(--surface)', borderBottom: '1px solid #2e2040' }}>
+          <h3
+            className="text-xs uppercase tracking-widest font-semibold"
+            style={{ color: accent, fontFamily: 'var(--font-dm-mono)' }}
+          >
+            {title}
+          </h3>
+        </div>
+        {bookings.length === 0 ? (
+          <p className="px-4 py-6 text-sm" style={{ color: 'var(--muted)' }}>{emptyMsg}</p>
+        ) : (
+          bookings.map(b => <GuestRow key={b.id} b={b} accent={accent} />)
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function DashboardPage() {
@@ -63,30 +119,30 @@ export default function DashboardPage() {
     load()
   }, [])
 
-  const occupiedToday = OCC_ROOMS.filter(room =>
+  const occupiedRooms = OCC_ROOMS.filter(room =>
     bookings.some(b => b.room === room && isOccupiedOn(b, today))
   )
-  const occupancyPct = Math.round((occupiedToday.length / 10) * 100)
-  const guestsToday = bookings.filter(b => isOccupiedOn(b, today)).reduce((s, b) => s + (b.guests || 0), 0)
-  const checkInsToday = bookings.filter(b => b.checkin === today).length
-  const checkOutsToday = bookings.filter(b => b.checkout === today).length
-  const monthlyBookings = bookings.filter(b => b.checkin.startsWith(thisMonth))
-  const grossMonth = monthlyBookings.reduce((s, b) => s + b.gross, 0)
-  const netMonth = monthlyBookings.reduce((s, b) => s + b.net_income, 0)
+  const occupancyPct = Math.round((occupiedRooms.length / 10) * 100)
+  const guestsToday = bookings
+    .filter(b => isOccupiedOn(b, today))
+    .reduce((s, b) => s + (b.guests || 0), 0)
+  const checkInsToday = bookings.filter(b => b.checkin === today)
+  const checkOutsToday = bookings.filter(b => b.checkout === today)
+  const netMonth = bookings
+    .filter(b => b.checkin.startsWith(thisMonth))
+    .reduce((s, b) => s + b.net_income, 0)
 
   const upcoming = bookings
-    .filter(b => b.checkin > today && b.checkin <= addDays(today, 7))
+    .filter(b => b.checkin > today && b.checkin <= addDays(today, 3))
     .sort((a, b) => a.checkin.localeCompare(b.checkin))
 
-  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i))
-
   const metrics = [
-    { label: 'Occupancy', value: `${occupancyPct}%`, sub: `${occupiedToday.length}/10 rooms`, color: 'var(--accent2)' },
-    { label: 'Guests today', value: String(guestsToday), sub: 'in-house', color: 'var(--blue)' },
-    { label: 'Check-ins', value: String(checkInsToday), sub: 'today', color: 'var(--green)' },
-    { label: 'Checkouts', value: String(checkOutsToday), sub: 'today', color: 'var(--amber)' },
-    { label: 'Gross', value: fmtMoney(grossMonth), sub: 'this month', color: 'var(--accent2)' },
-    { label: 'Net', value: fmtMoney(netMonth), sub: 'this month', color: 'var(--green)' },
+    { label: 'Rooms occupied',  value: `${occupiedRooms.length}/10`,      color: 'var(--blue)' },
+    { label: 'Occupancy',       value: `${occupancyPct}%`,                 color: 'var(--accent2)' },
+    { label: 'Total guests',    value: String(guestsToday),                color: 'var(--green)' },
+    { label: 'Check-out today', value: String(checkOutsToday.length),      color: 'var(--amber)' },
+    { label: 'Check-in today',  value: String(checkInsToday.length),       color: 'var(--green)' },
+    { label: 'Net income',      value: fmtMoney(netMonth),                 color: 'var(--green)' },
   ]
 
   return (
@@ -99,90 +155,93 @@ export default function DashboardPage() {
         <p style={{ color: 'var(--muted)' }}>Loading…</p>
       ) : (
         <>
-          {/* Metric Cards */}
-          <div className="grid gap-4 mb-8" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          {/* Metric Cards — all 6 in one row */}
+          <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
             {metrics.map(m => (
-              <div key={m.label} className="rounded-2xl p-5" style={{ background: 'var(--surface)', border: '1px solid #2e2040' }}>
-                <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>{m.label}</p>
-                <p className="text-3xl font-semibold mb-1" style={{ color: m.color, fontFamily: 'var(--font-dm-mono)' }}>{m.value}</p>
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>{m.sub}</p>
+              <div
+                key={m.label}
+                className="rounded-xl p-4"
+                style={{ background: 'var(--surface)', border: '1px solid #2e2040' }}
+              >
+                <p
+                  className="uppercase tracking-wider mb-2"
+                  style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)', fontSize: '0.6rem' }}
+                >
+                  {m.label}
+                </p>
+                <p
+                  className="text-2xl font-semibold"
+                  style={{ color: m.color, fontFamily: 'var(--font-dm-mono)' }}
+                >
+                  {m.value}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* Weekly Occupancy Grid */}
-          <div className="mb-8">
-            <h3 className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>
-              Weekly Grid
-            </h3>
-            <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #2e2040' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: 'var(--surface)', borderBottom: '1px solid #2e2040' }}>
-                    <th className="px-3 py-2 text-left" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)', minWidth: '6rem' }}>Room</th>
-                    {days.map(d => (
-                      <th key={d} className="px-2 py-2 text-center" style={{
-                        color: d === today ? 'var(--accent2)' : 'var(--muted)',
-                        fontFamily: 'var(--font-dm-mono)',
-                        fontWeight: d === today ? 600 : 400,
-                      }}>
-                        {shortDay(d)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {OCC_ROOMS.map((room, i) => (
-                    <tr key={room} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'transparent', borderBottom: '1px solid #2e2040' }}>
-                      <td className="px-3 py-2" style={{ color: 'var(--text)', fontFamily: 'var(--font-dm-mono)' }}>{room}</td>
-                      {days.map(d => {
-                        const booking = bookings.find(b => b.room === room && isOccupiedOn(b, d))
-                        const style = booking ? (CELL_COLORS[booking.status] ?? { bg: 'rgba(96,165,250,0.15)', color: '#60a5fa' }) : null
-                        return (
-                          <td key={d} className="px-1 py-2 text-center">
-                            {booking ? (
-                              <span
-                                className="inline-block rounded-md px-1.5 py-0.5 truncate"
-                                style={{ background: style!.bg, color: style!.color, maxWidth: '5rem', fontSize: '0.65rem' }}
-                                title={`${booking.guest} · ${booking.status}`}
-                              >
-                                {booking.guest.split(' ')[0]}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#3a2d50', fontSize: '0.6rem' }}>·</span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* Today panels — Check-in left, Check-out right */}
+          <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <TodayPanel
+              title="Checking In Today"
+              accent="#4ade80"
+              bookings={checkInsToday}
+              emptyMsg="No check-ins today"
+            />
+            <TodayPanel
+              title="Checking Out Today"
+              accent="#fbbf24"
+              bookings={checkOutsToday}
+              emptyMsg="No check-outs today"
+            />
           </div>
 
-          {/* Upcoming Check-ins */}
+          {/* Upcoming Check-ins — next 3 days */}
           <div>
-            <h3 className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>
-              Upcoming Check-ins (next 7 days)
+            <h3
+              className="text-xs uppercase tracking-wider mb-3"
+              style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}
+            >
+              Upcoming Check-ins — Next 3 days
             </h3>
             {upcoming.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>No upcoming check-ins in the next 7 days.</p>
+              <p className="text-sm" style={{ color: 'var(--muted)' }}>No upcoming check-ins in the next 3 days.</p>
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #2e2040' }}>
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background: 'var(--surface)', borderBottom: '1px solid #2e2040' }}>
                       {['Guest', 'Room', 'Check-in', 'Check-out', 'Nights', 'Source'].map(h => (
-                        <th key={h} className="px-4 py-2 text-left" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                        <th
+                          key={h}
+                          className="px-4 py-2 text-left"
+                          style={{
+                            color: 'var(--muted)',
+                            fontFamily: 'var(--font-dm-mono)',
+                            fontSize: '0.7rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                          }}
+                        >
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {upcoming.map((b, i) => {
-                      const nights = Math.round((new Date(b.checkout + 'T00:00:00').getTime() - new Date(b.checkin + 'T00:00:00').getTime()) / 86400000)
+                      const nights = Math.round(
+                        (new Date(b.checkout + 'T00:00:00').getTime() -
+                          new Date(b.checkin + 'T00:00:00').getTime()) /
+                          86400000,
+                      )
                       return (
-                        <tr key={b.id} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'transparent', borderBottom: '1px solid #2e2040' }}>
+                        <tr
+                          key={b.id}
+                          style={{
+                            background: i % 2 === 0 ? 'var(--surface)' : 'transparent',
+                            borderBottom: '1px solid #2e2040',
+                          }}
+                        >
                           <td className="px-4 py-2" style={{ color: 'var(--text)' }}>{b.guest}</td>
                           <td className="px-4 py-2" style={{ color: 'var(--text)', fontFamily: 'var(--font-dm-mono)' }}>{b.room}</td>
                           <td className="px-4 py-2" style={{ color: 'var(--green)', fontFamily: 'var(--font-dm-mono)' }}>{b.checkin}</td>

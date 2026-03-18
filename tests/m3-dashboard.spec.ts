@@ -22,23 +22,23 @@ test.describe('M3 — Dashboard, Day Guest & Shifts', () => {
   test('dashboard loads with metric cards', async ({ page }) => {
     await login(page)
     await page.waitForLoadState('networkidle')
-    // Metric cards section
+    // 6 metric cards in one row
+    await expect(page.getByText('Rooms occupied').first()).toBeVisible()
     await expect(page.getByText('Occupancy').first()).toBeVisible()
-    await expect(page.getByText('Check-ins').first()).toBeVisible()
-    await expect(page.getByText('Checkouts').first()).toBeVisible()
-    await expect(page.getByText('Gross').first()).toBeVisible()
-    await expect(page.getByText('Net').first()).toBeVisible()
+    await expect(page.getByText('Total guests').first()).toBeVisible()
+    await expect(page.getByText('Check-out today').first()).toBeVisible()
+    await expect(page.getByText('Check-in today').first()).toBeVisible()
+    await expect(page.getByText('Net income').first()).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/m3-01-dashboard.png', fullPage: true })
   })
 
-  test('dashboard weekly grid shows all OCC_ROOMS', async ({ page }) => {
+  test('dashboard today panels are visible', async ({ page }) => {
     await login(page)
     await page.waitForLoadState('networkidle')
-    // Verify all 10 OCC_ROOMS appear in weekly grid
-    for (const room of ['ม่วง', 'ชมพู', 'ขาว', 'Tent 1', 'Tent 2', 'Tent 3', 'Tent 4', 'Bungalow 1', 'Bungalow 2', 'Bungalow 3']) {
-      await expect(page.getByText(room).first()).toBeVisible()
-    }
-    await page.screenshot({ path: 'test-results/screenshots/m3-02-weekly-grid.png', fullPage: true })
+    // Check-in panel (left) and Check-out panel (right)
+    await expect(page.getByText('Checking In Today').first()).toBeVisible()
+    await expect(page.getByText('Checking Out Today').first()).toBeVisible()
+    await page.screenshot({ path: 'test-results/screenshots/m3-02-today-panels.png', fullPage: true })
   })
 
   test('day guest page loads with room × date grid', async ({ page }) => {
