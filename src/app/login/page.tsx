@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -33,23 +34,19 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
 
         {/* Logo */}
-        <div className="mb-8 text-center">
+        <div className="mb-8 flex justify-center">
           <div
-            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4"
-            style={{ background: 'var(--accent)' }}
+            className="rounded-2xl overflow-hidden"
+            style={{ width: '200px', background: 'var(--accent)' }}
           >
-            {/* Frog placeholder until logo asset is added */}
-            <span style={{ fontSize: '2.5rem' }}>🐸</span>
+            <Image
+              src="/himmapun-logo.png"
+              alt="Himmapun Retreat"
+              width={200}
+              height={200}
+              priority
+            />
           </div>
-          <h1
-            className="text-3xl mb-1"
-            style={{ fontFamily: 'var(--font-fraunces)', color: 'var(--text)' }}
-          >
-            Himmapun Retreat
-          </h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.8rem', letterSpacing: '0.15em' }}>
-            SIMPLE NATURAL LIVING
-          </p>
         </div>
 
         {/* Card */}

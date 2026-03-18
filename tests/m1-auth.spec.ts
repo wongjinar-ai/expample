@@ -12,7 +12,7 @@ test.describe('M1 — Auth & Layout', () => {
   test('unauthenticated visit redirects to /login', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveURL(/\/login/)
-    await expect(page.getByText('Himmapun Retreat')).toBeVisible()
+    await expect(page.getByRole('img', { name: 'Himmapun Retreat' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/01-login-page.png', fullPage: true })
   })
@@ -34,7 +34,7 @@ test.describe('M1 — Auth & Layout', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/)
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByText('Himmapun')).toBeVisible()
+    await expect(page.getByRole('img', { name: 'Himmapun' })).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/04-dashboard.png', fullPage: true })
   })
 

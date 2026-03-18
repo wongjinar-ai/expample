@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -33,20 +34,16 @@ export default function Sidebar() {
       style={{ background: 'var(--accent)', borderRight: '1px solid #4a1570' }}
     >
       {/* Logo */}
-      <div className="px-3 mb-8">
-        <div className="flex items-center gap-2 mb-1">
-          <span style={{ fontSize: '1.5rem' }}>🐸</span>
-          <h1
-            className="text-xl leading-tight"
-            style={{ fontFamily: 'var(--font-fraunces)', color: '#ffffff' }}
-          >
-            Himmapun
-          </h1>
-        </div>
-        <p className="text-xs uppercase tracking-widest" style={{ color: '#d8b4fe', marginLeft: '2.2rem' }}>
-          Retreat
-        </p>
-        <p className="text-xs mt-2" style={{ color: '#c4b0d8', fontFamily: 'var(--font-dm-mono)', fontSize: '0.7rem' }}>
+      <div className="px-2 mb-8">
+        <Image
+          src="/himmapun-logo.png"
+          alt="Himmapun"
+          width={176}
+          height={176}
+          className="w-full h-auto rounded-xl"
+          priority
+        />
+        <p className="text-xs mt-3 text-center" style={{ color: 'rgba(255,135,255,0.8)', fontFamily: 'var(--font-dm-mono)', fontSize: '0.65rem', letterSpacing: '0.1em' }}>
           {dateStr}
         </p>
       </div>
@@ -62,7 +59,7 @@ export default function Sidebar() {
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all"
               style={{
                 background: active ? 'rgba(255,255,255,0.15)' : 'transparent',
-                color: active ? '#ffffff' : '#d8b4fe',
+                color: active ? '#ffffff' : 'rgba(255,255,255,0.75)',
                 fontWeight: active ? 500 : 400,
               }}
             >
