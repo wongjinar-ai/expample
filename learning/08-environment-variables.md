@@ -39,13 +39,13 @@ The actual values live in `.env.local` — a file that is never sent to GitHub.
 
 ```mermaid
 flowchart TD
-    EnvFile[".env.local\n(on your laptop — never committed)"]
-    Code["Your code\nprocess.env.NEXT_PUBLIC_SUPABASE_URL"]
-    Runtime["When the app runs,\nit reads the variable from .env.local"]
+    EnvFile[".env.local on your laptop"]
+    Code["Your code uses process.env.NEXT_PUBLIC_SUPABASE_URL"]
+    Runtime["App reads the variable at runtime"]
 
     EnvFile --> Runtime
     Code --> Runtime
-    Runtime --> Value["Gets the actual value:\nhttps://xyzxyz.supabase.co"]
+    Runtime --> Value["Gets the actual URL value"]
 ```
 
 ---
@@ -84,8 +84,8 @@ flowchart LR
     Files["All files in your project"]
     Gitignore{".gitignore rules"}
     Files --> Gitignore
-    Gitignore -->|"included"| GitHub["Sent to GitHub\n(safe to share)"]
-    Gitignore -->|"ignored"| Hidden["Never sent\n(.env.local, node_modules)"]
+    Gitignore -->|"included"| GitHub["Sent to GitHub - (safe to share)"]
+    Gitignore -->|"ignored"| Hidden["Never sent - (.env.local, node_modules)"]
 ```
 
 Next.js adds `.env.local` to `.gitignore` automatically when you create the project.
@@ -120,14 +120,14 @@ In Next.js, environment variables have different visibility depending on their n
 ```mermaid
 graph TD
     EnvVars["Environment Variables"]
-    EnvVars --> Public["NEXT_PUBLIC_SUPABASE_URL\nNEXT_PUBLIC_SUPABASE_ANON_KEY"]
+    EnvVars --> Public["NEXT_PUBLIC_SUPABASE_URL - NEXT_PUBLIC_SUPABASE_ANON_KEY"]
     EnvVars --> Private["SUPABASE_SERVICE_ROLE_KEY"]
 
-    Public --> Browser["Available in browser\n(JavaScript on user's device)"]
-    Public --> Server["Available on server\n(Next.js API routes)"]
+    Public --> Browser["Available in browser - (JavaScript on user's device)"]
+    Public --> Server["Available on server - (Next.js API routes)"]
 
-    Private --> ServerOnly["Server-side ONLY\n(never in the browser)"]
-    Private --> BrowserNone["NOT available in browser\n(would be undefined)"]
+    Private --> ServerOnly["Server-side ONLY - (never in the browser)"]
+    Private --> BrowserNone["NOT available in browser - (would be undefined)"]
 ```
 
 | Prefix | Visible in browser? | Use for |
@@ -145,12 +145,12 @@ You have three "environments" — three places your app runs:
 
 ```mermaid
 graph TD
-    Local["Local Development\n(your laptop)"]
-    Preview["Preview Deployments\n(Vercel, feature branches)"]
-    Production["Production\n(Vercel, main branch)"]
+    Local["Local Development - (your laptop)"]
+    Preview["Preview Deployments - (Vercel, feature branches)"]
+    Production["Production - (Vercel, main branch)"]
 
     Local -->|"reads from"| EnvLocal[".env.local"]
-    Preview -->|"reads from"| VercelSettings["Vercel Dashboard\nEnvironment Variables"]
+    Preview -->|"reads from"| VercelSettings["Vercel Dashboard - Environment Variables"]
     Production -->|"reads from"| VercelSettings
 ```
 

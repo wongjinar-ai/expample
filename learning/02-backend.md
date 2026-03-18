@@ -5,10 +5,10 @@
 The **backend** is the part of a web application that runs on a server — hidden from users. It handles storing data, checking passwords, running business logic, and talking to other services.
 
 ```mermaid
-graph LR
-    User["User's Browser\n(Frontend)"]
-    Server["Server\n(Backend)"]
-    DB["Database"]
+flowchart LR
+    User[User Browser Frontend]
+    Server[Server Backend]
+    DB[Database]
 
     User -->|"I want to see all bookings"| Server
     Server -->|"SELECT * FROM bookings"| DB
@@ -93,14 +93,14 @@ The response comes back as **JSON** — a standard text format for data:
 In your project, Next.js handles BOTH frontend AND backend in one codebase. This is called **full-stack**.
 
 ```mermaid
-graph TD
-    subgraph NextJS["Next.js App (one codebase)"]
-        FE["Frontend\nsrc/app/dashboard/page.tsx"]
-        BE["Backend\nsrc/app/api/parse-screenshot/route.ts"]
+flowchart TD
+    subgraph NextJS[Next.js App one codebase]
+        FE[Frontend src/app/dashboard/page.tsx]
+        BE[Backend src/app/api/parse-screenshot/route.ts]
     end
     FE -->|"fetch('/api/parse-screenshot')"| BE
-    BE -->|"calls"| Anthropic["Anthropic AI API\n(external service)"]
-    BE -->|"secret key stays server-side"| Safe["Never exposed to browser"]
+    BE -->|"calls"| Anthropic[Anthropic AI API external service]
+    BE -->|"secret key stays server-side"| Safe[Never exposed to browser]
 ```
 
 API routes in Next.js live in `src/app/api/` folders. The file `route.ts` inside handles requests.
@@ -170,9 +170,9 @@ In your app, **RLS** is a database-level security rule. Even if someone somehow 
 
 ```mermaid
 flowchart TD
-    Request["Request to database"] --> Check{Is user authenticated?}
-    Check -->|Yes| Allow["Allow read/write"]
-    Check -->|No| Deny["Deny — return nothing"]
+    Request[Request to database] --> Check{Is user authenticated?}
+    Check -->|Yes| Allow[Allow read/write]
+    Check -->|No| Deny[Deny — return nothing]
 ```
 
 The rule in SQL looks like this:
@@ -188,11 +188,11 @@ This means: only logged-in users can touch the bookings table.
 ## Summary — Backend at a Glance
 
 ```mermaid
-graph TB
-    Browser["Browser (Frontend)"]
-    NextAPI["Next.js API Routes (Backend)"]
-    Supabase["Supabase\n(Database + Auth)"]
-    External["External APIs\n(Anthropic, etc.)"]
+flowchart TB
+    Browser[Browser Frontend]
+    NextAPI[Next.js API Routes Backend]
+    Supabase[Supabase Database and Auth]
+    External[External APIs Anthropic etc]
 
     Browser -->|"HTTP requests"| NextAPI
     NextAPI -->|"SQL queries"| Supabase

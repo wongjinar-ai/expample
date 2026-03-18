@@ -16,13 +16,13 @@ Without it, you will go in circles, build things in the wrong order, and forget 
 Do not try to build everything at once. Build a solid foundation first, then add features on top.
 
 ```mermaid
-graph BT
-    L0["Layer 0: Setup\n(Supabase, GitHub, Vercel, Node.js)"]
-    L1["Layer 1: Foundation\n(Login, layout, routing)"]
-    L2["Layer 2: Core features\n(Bookings CRUD)"]
-    L3["Layer 3: Views & Dashboard\n(Metrics, grids)"]
-    L4["Layer 4: Advanced\n(AI intake, monthly report)"]
-    L5["Layer 5: Polish\n(Mobile QA, data migration)"]
+flowchart BT
+    L0[Layer 0 Setup Supabase GitHub Vercel Node.js]
+    L1[Layer 1 Foundation Login layout routing]
+    L2[Layer 2 Core features Bookings CRUD]
+    L3[Layer 3 Views and Dashboard Metrics grids]
+    L4[Layer 4 Advanced AI intake monthly report]
+    L5[Layer 5 Polish Mobile QA data migration]
 
     L0 --> L1 --> L2 --> L3 --> L4 --> L5
 ```
@@ -49,12 +49,12 @@ Big things feel overwhelming. Break them down until each task takes less than on
 
 ```mermaid
 flowchart TD
-    Big["Big goal:\nBuild the Bookings page"] --> M1["Task: Fetch bookings from Supabase"]
-    Big --> M2["Task: Render them in a table"]
-    Big --> M3["Task: Add filter dropdowns"]
-    Big --> M4["Task: Add date range filter"]
-    Big --> M5["Task: Add delete button with confirmation"]
-    Big --> M6["Task: Test on mobile"]
+    Big[Big goal Build the Bookings page] --> M1[Task Fetch bookings from Supabase]
+    Big --> M2[Task Render them in a table]
+    Big --> M3[Task Add filter dropdowns]
+    Big --> M4[Task Add date range filter]
+    Big --> M5[Task Add delete button with confirmation]
+    Big --> M6[Task Test on mobile]
 ```
 
 If a task still feels too big, break it down further. "Build the table" → "write the table header" → "write one data row" → "loop over all rows".
@@ -119,13 +119,13 @@ A **blocker** is something stopping you from continuing. Do not stay stuck for h
 
 ```mermaid
 flowchart TD
-    Stuck["You are stuck on a task"] --> Wait["Wait 15 minutes and try again"]
+    Stuck[You are stuck on a task] --> Wait[Wait 15 minutes and try again]
     Wait --> StillStuck{Still stuck?}
-    StillStuck -->|No| Continue["Continue"]
-    StillStuck -->|Yes| Smaller["Break the task into smaller steps"]
-    Smaller --> Search["Search for the specific error message"]
-    Search --> Ask["Ask for help (Claude Code, Stack Overflow, documentation)"]
-    Ask --> Unblocked["Unblocked — continue"]
+    StillStuck -->|No| Continue[Continue]
+    StillStuck -->|Yes| Smaller[Break the task into smaller steps]
+    Smaller --> Search[Search for the specific error message]
+    Search --> Ask[Ask for help Claude Code Stack Overflow documentation]
+    Ask --> Unblocked[Unblocked — continue]
 ```
 
 The most important thing: if you are stuck, **be specific** about what you tried and what error you got. "It doesn't work" is hard to help with. "I get this error on line 42" is easy.
@@ -138,12 +138,12 @@ The most important thing: if you are stuck, **be specific** about what you tried
 
 ```mermaid
 flowchart TD
-    Plan["Planned: Basic booking table"]
-    Plan --> Start["Start building"]
-    Start --> Idea1["'Oh, I should also add charts'"]
-    Idea1 --> Idea2["'And a staff messaging system'"]
-    Idea2 --> Idea3["'And a guest review tracker'"]
-    Idea3 --> Never["Original booking table still not done"]
+    Plan[Planned Basic booking table]
+    Plan --> Start[Start building]
+    Start --> Idea1[Oh I should also add charts]
+    Idea1 --> Idea2[And a staff messaging system]
+    Idea2 --> Idea3[And a guest review tracker]
+    Idea3 --> Never[Original booking table still not done]
 ```
 
 **How to avoid it:** Write new ideas in a "Future Ideas" list and keep building what you planned. Ship the basics first.

@@ -39,8 +39,8 @@ The three building blocks of every webpage:
 React is a JavaScript **library** that makes building complex UIs much easier. Instead of writing raw HTML that you update manually, you write **components** — reusable building blocks.
 
 ```mermaid
-graph TD
-    App["App (root)"]
+flowchart TD
+    App[App Root]
     App --> Sidebar
     App --> MainContent
     MainContent --> Topbar
@@ -48,9 +48,9 @@ graph TD
     DashboardPage --> MetricCards
     DashboardPage --> WeeklyGrid
     DashboardPage --> OccupancyByRoom
-    MetricCards --> Card1["Card: Occupancy"]
-    MetricCards --> Card2["Card: Guests"]
-    MetricCards --> Card3["Card: Gross Income"]
+    MetricCards --> Card1[Occupancy Card]
+    MetricCards --> Card2[Guests Card]
+    MetricCards --> Card3[Gross Income Card]
 ```
 
 Each box above is a **component** — a small, reusable piece of UI. This is exactly how your Himmapun app is built.
@@ -62,13 +62,13 @@ Each box above is a **component** — a small, reusable piece of UI. This is exa
 Next.js is built **on top of React** and adds extra superpowers:
 
 ```mermaid
-graph LR
-    React["React\n(UI components)"]
-    NextJS["Next.js\n(adds routing, server, deployment)"]
+flowchart LR
+    React[React UI components]
+    NextJS[Next.js routing and server]
     React --> NextJS
-    NextJS --> Routing["File-based routing\n(folders = pages)"]
-    NextJS --> Server["Server-side features\n(API routes)"]
-    NextJS --> Vercel["Zero-config Vercel deploy"]
+    NextJS --> Routing[File-based routing]
+    NextJS --> Server[Server-side API routes]
+    NextJS --> Vercel[Zero-config Vercel deploy]
 ```
 
 **File-based routing** means the folder structure IS the URL structure:
@@ -181,14 +181,14 @@ If you accidentally set `gross = "five hundred"`, TypeScript will warn you befor
 ## Summary
 
 ```mermaid
-graph LR
-    HTML["HTML\nStructure"] --> Page["Web Page"]
-    CSS["CSS\nStyling"] --> Page
-    JS["JavaScript\nBehaviour"] --> Page
-    React["React\nComponent system"] --> JS
-    Next["Next.js\nRouting + Server"] --> React
-    Tailwind["TailwindCSS\nUtility classes"] --> CSS
-    TypeScript["TypeScript\nType safety"] --> JS
+flowchart LR
+    HTML[HTML Structure] --> Page[Web Page]
+    CSS[CSS Styling] --> Page
+    JS[JavaScript Behaviour] --> Page
+    React[React Component system] --> JS
+    Next[Next.js Routing and Server] --> React
+    Tailwind[TailwindCSS Utility classes] --> CSS
+    TypeScript[TypeScript Type safety] --> JS
 ```
 
 Frontend development is the art of turning data into something humans can look at and interact with. Everything the staff at Himmapun Retreat taps or clicks is the frontend.

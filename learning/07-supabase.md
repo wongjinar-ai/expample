@@ -9,19 +9,19 @@
 - **Auto-generated APIs** (query your data from your app)
 
 ```mermaid
-graph TD
-    App["Your Next.js App"]
-    Supabase["Supabase Platform"]
+flowchart TD
+    App[Your Next.js App]
+    Supabase[Supabase Platform]
 
-    App -->|"read/write data"| DB["PostgreSQL\nDatabase"]
-    App -->|"login/logout"| Auth["Auth Service"]
+    App -->|"read/write data"| DB[PostgreSQL Database]
+    App -->|"login/logout"| Auth[Auth Service]
 
     DB --- Supabase
     Auth --- Supabase
 
-    Supabase --> Dashboard["Visual Dashboard\n(you can inspect data here)"]
-    Supabase --> API["Auto-generated REST API"]
-    Supabase --> RLS["Row Level Security\n(database-level permissions)"]
+    Supabase --> Dashboard[Visual Dashboard you can inspect data here]
+    Supabase --> API[Auto-generated REST API]
+    Supabase --> RLS[Row Level Security database-level permissions]
 ```
 
 ---
@@ -141,10 +141,10 @@ RLS is a set of rules that live **inside the database**. Even if someone bypasse
 
 ```mermaid
 flowchart TD
-    Request["Someone tries to read bookings"]
-    Request --> Check{Is auth.role() = 'authenticated'?}
-    Check -->|Yes — logged in user| Allow["Return the data"]
-    Check -->|No — not logged in| Deny["Return nothing — access denied"]
+    Request[Someone tries to read bookings]
+    Request --> Check{Is auth.role authenticated?}
+    Check -->|Yes — logged in user| Allow[Return the data]
+    Check -->|No — not logged in| Deny[Return nothing — access denied]
 ```
 
 In SQL:
@@ -168,13 +168,13 @@ Once this policy is in place, anonymous requests (from someone not logged in) wi
 Supabase gives you two keys. They are very different:
 
 ```mermaid
-graph TD
-    SupaKeys["Supabase API Keys"]
-    SupaKeys --> Anon["anon / public key\n(safe to expose in browser)"]
-    SupaKeys --> Service["service_role key\n(bypasses RLS — KEEP SECRET)"]
+flowchart TD
+    SupaKeys[Supabase API Keys]
+    SupaKeys --> Anon[anon public key safe to expose in browser]
+    SupaKeys --> Service[service_role key bypasses RLS KEEP SECRET]
 
-    Anon --> AppCode["Used in Next.js app\n(NEXT_PUBLIC_ prefix)"]
-    Service --> SlashCmd["/new-booking slash command\n(.env.local only — never Vercel)"]
+    Anon --> AppCode[Used in Next.js app NEXT_PUBLIC_ prefix]
+    Service --> SlashCmd[/new-booking slash command .env.local only never Vercel]
 ```
 
 | Key | Who uses it | What it can do | Where it lives |
@@ -238,12 +238,12 @@ Using the correct type means the database enforces it — you cannot accidentall
 ## Summary
 
 ```mermaid
-graph LR
-    You["You / Your App"]
-    Client["Supabase JS Client\n(easy API)"]
-    Auth["Auth Service\n(login/session)"]
-    RLS["Row Level Security\n(permission rules)"]
-    DB["PostgreSQL\n(the actual data)"]
+flowchart LR
+    You[You and Your App]
+    Client[Supabase JS Client easy API]
+    Auth[Auth Service login and session]
+    RLS[Row Level Security permission rules]
+    DB[PostgreSQL the actual data]
 
     You --> Client
     Client --> Auth

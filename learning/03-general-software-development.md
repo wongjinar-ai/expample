@@ -26,12 +26,12 @@ Software is never truly "finished" — you build, ship, get feedback, and improv
 When you write code, it doesn't run by itself. Something has to execute it.
 
 ```mermaid
-graph LR
-    Code["Your Code\n(TypeScript)"]
-    Compiler["Compiler / Transpiler\n(converts to JavaScript)"]
-    Runtime["Runtime\n(Node.js or browser)"]
-    OS["Operating System\n(macOS, Linux)"]
-    Hardware["Hardware\n(CPU, RAM)"]
+flowchart LR
+    Code[Your Code TypeScript]
+    Compiler[Compiler Transpiler converts to JavaScript]
+    Runtime[Runtime Node.js or browser]
+    OS[Operating System macOS Linux]
+    Hardware[Hardware CPU RAM]
 
     Code --> Compiler --> Runtime --> OS --> Hardware
 ```
@@ -108,11 +108,11 @@ if (booking.status === "Checkout") {
 
 ```mermaid
 flowchart TD
-    Check{Is status "Checkout"?}
-    Check -->|Yes| CleanRoom["Mark room for cleaning"]
-    Check -->|No| Check2{Is status "Check-in"?}
-    Check2 -->|Yes| PrepRoom["Prepare room"]
-    Check2 -->|No| Nothing["Do nothing"]
+    Check{Is status Checkout?}
+    Check -->|Yes| CleanRoom[Mark room for cleaning]
+    Check -->|No| Check2{Is status Check-in?}
+    Check2 -->|Yes| PrepRoom[Prepare room]
+    Check2 -->|No| Nothing[Do nothing]
 ```
 
 ---
@@ -142,12 +142,12 @@ Bugs are mistakes in code. Every developer has bugs — the skill is finding and
 
 ```mermaid
 flowchart TD
-    Bug["Something is wrong"] --> Reproduce["Reproduce the problem consistently"]
-    Reproduce --> Isolate["Narrow down WHERE it fails"]
-    Isolate --> Understand["Understand WHY it fails"]
-    Understand --> Fix["Write a fix"]
-    Fix --> Test["Test that the fix works"]
-    Test --> Done["Done"]
+    Bug[Something is wrong] --> Reproduce[Reproduce the problem consistently]
+    Reproduce --> Isolate[Narrow down WHERE it fails]
+    Isolate --> Understand[Understand WHY it fails]
+    Understand --> Fix[Write a fix]
+    Fix --> Test[Test that the fix works]
+    Test --> Done[Done]
 ```
 
 **Types of errors:**
@@ -229,17 +229,17 @@ function isValidNights(nights: number): boolean {
 Before writing code, you need the right tools set up on your computer.
 
 ```mermaid
-graph TD
-    Terminal["Terminal\n(run commands)"]
-    NodeJS["Node.js\n(run JavaScript locally)"]
-    VSCode["VS Code\n(code editor)"]
-    Git["Git\n(version control)"]
-    Browser["Browser\n(see your app)"]
+flowchart TD
+    Terminal[Terminal run commands]
+    NodeJS[Node.js run JavaScript locally]
+    VSCode[VS Code code editor]
+    Git[Git version control]
+    Browser[Browser see your app]
 
     Terminal --> NodeJS
     Terminal --> Git
     VSCode --> Terminal
-    Browser --> App["localhost:3000\n(your app running locally)"]
+    Browser --> App[localhost 3000 your app running locally]
 ```
 
 **The development loop:**

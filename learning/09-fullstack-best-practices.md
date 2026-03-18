@@ -7,11 +7,11 @@ A **full stack** app has both a frontend (what users see) and a backend (the ser
 ```mermaid
 graph TD
     subgraph Frontend["Frontend (Next.js + React)"]
-        UI["Pages & Components\n(what staff see and click)"]
+        UI["Pages & Components - (what staff see and click)"]
     end
     subgraph Backend["Backend (Next.js API Routes + Supabase)"]
-        API["API Routes\n(server logic)"]
-        DB["PostgreSQL Database\n(data storage)"]
+        API["API Routes - (server logic)"]
+        DB["PostgreSQL Database - (data storage)"]
     end
 
     UI -->|"HTTP requests"| API
@@ -48,13 +48,13 @@ From your `CLAUDE.md`:
 ```mermaid
 flowchart TD
     Secret["Secret key (Supabase password)"]
-    Secret -->|"Wrong"| Code["Written in code\n(committed to GitHub)"]
-    Secret -->|"Right"| EnvFile[".env.local\n(never committed)"]
+    Secret -->|"Wrong"| Code["Written in code - (committed to GitHub)"]
+    Secret -->|"Right"| EnvFile[".env.local - (never committed)"]
 
     Code --> GitHub["GitHub (public)"]
     GitHub --> Disaster["Anyone can steal your data"]
 
-    EnvFile --> Safe["Only on your machine\n(and Vercel's secure storage)"]
+    EnvFile --> Safe["Only on your machine - (and Vercel's secure storage)"]
 ```
 
 - API keys, database passwords, and service role keys go in `.env.local`
@@ -215,11 +215,11 @@ Do not wait until the app is "finished" to deploy. Deploy a skeleton on day one.
 
 ```mermaid
 flowchart LR
-    M0["M0: Just a blank page\n(deployed to Vercel)"]
-    M1["M1: Login works\n(deployed)"]
-    M2["M2: Bookings CRUD\n(deployed)"]
-    M3["M3: Dashboard\n(deployed)"]
-    Final["Final: All features\n(already deployed)"]
+    M0["M0: Just a blank page - (deployed to Vercel)"]
+    M1["M1: Login works - (deployed)"]
+    M2["M2: Bookings CRUD - (deployed)"]
+    M3["M3: Dashboard - (deployed)"]
+    Final["Final: All features - (already deployed)"]
 
     M0 --> M1 --> M2 --> M3 --> Final
 ```
@@ -258,9 +258,9 @@ This deserves its own rule because the consequences are severe:
 
 ```mermaid
 flowchart TD
-    ServiceKey["SUPABASE_SERVICE_ROLE_KEY\n(bypasses ALL security)"]
-    ServiceKey -->|"if leaked"| Anyone["Anyone can read, write,\ndelete all your data"]
-    ServiceKey -->|"correct usage"| LocalOnly["Only on your laptop\nOnly in .env.local\nOnly for /new-booking command"]
+    ServiceKey["SUPABASE_SERVICE_ROLE_KEY - (bypasses ALL security)"]
+    ServiceKey -->|"if leaked"| Anyone["Anyone can read, write, - delete all your data"]
+    ServiceKey -->|"correct usage"| LocalOnly["Only on your laptop - Only in .env.local - Only for /new-booking command"]
     LocalOnly -->|"never"| GitHub["GitHub"]
     LocalOnly -->|"never"| Vercel["Vercel"]
     LocalOnly -->|"never"| AppCode["App source code"]
@@ -272,17 +272,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    User["Staff Member\n(browser on phone)"]
+    User["Staff Member - (browser on phone)"]
 
     subgraph Next["Next.js App (Vercel)"]
-        Page["React Page\n(renders UI)"]
-        API["API Route\n(server logic if needed)"]
+        Page["React Page - (renders UI)"]
+        API["API Route - (server logic if needed)"]
     end
 
     subgraph Supa["Supabase"]
-        Auth["Auth\n(session check)"]
-        RLS["Row Level Security\n(permission check)"]
-        DB["PostgreSQL\n(data storage)"]
+        Auth["Auth - (session check)"]
+        RLS["Row Level Security - (permission check)"]
+        DB["PostgreSQL - (data storage)"]
     end
 
     User --> Page

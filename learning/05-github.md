@@ -7,10 +7,10 @@
 **GitHub** is a website that stores your Git history online — so your code is backed up, shareable, and can trigger other services (like Vercel deployments).
 
 ```mermaid
-graph LR
-    Local["Your Computer\n(local code)"]
-    GitHub["GitHub\n(cloud backup + history)"]
-    Vercel["Vercel\n(auto-deploys when you push)"]
+flowchart LR
+    Local[Your Computer local code]
+    GitHub[GitHub cloud backup and history]
+    Vercel[Vercel auto-deploys when you push]
 
     Local -->|"git push"| GitHub
     GitHub -->|"webhook trigger"| Vercel
@@ -36,11 +36,11 @@ With Git:
 ## The Core Concepts
 
 ```mermaid
-graph TD
-    WorkingFiles["Working Files\n(what you see in your editor)"]
-    StagingArea["Staging Area\n(what will be in the next commit)"]
-    LocalRepo["Local Repository\n(.git folder on your machine)"]
-    GitHub["GitHub\n(remote repository)"]
+flowchart TD
+    WorkingFiles[Working Files what you see in your editor]
+    StagingArea[Staging Area what will be in the next commit]
+    LocalRepo[Local Repository .git folder on your machine]
+    GitHub[GitHub remote repository]
 
     WorkingFiles -->|"git add"| StagingArea
     StagingArea -->|"git commit"| LocalRepo
@@ -95,13 +95,13 @@ Here is what your daily workflow looks like:
 
 ```mermaid
 flowchart TD
-    Start([Start working]) --> Pull["git pull\n(get latest code)"]
-    Pull --> Code["Write code in VS Code"]
-    Code --> Check["git status\n(see what changed)"]
-    Check --> Stage["git add .\n(stage all changes)"]
-    Stage --> Commit["git commit -m 'description'\n(save a snapshot)"]
-    Commit --> Push["git push\n(upload to GitHub)"]
-    Push --> Vercel["Vercel auto-deploys\n(live in ~1 minute)"]
+    Start([Start working]) --> Pull[git pull get latest code]
+    Pull --> Code[Write code in VS Code]
+    Code --> Check[git status see what changed]
+    Check --> Stage[git add . stage all changes]
+    Stage --> Commit[git commit save a snapshot]
+    Commit --> Push[git push upload to GitHub]
+    Push --> Vercel[Vercel auto-deploys live in ~1 minute]
     Vercel --> More{More to do?}
     More -->|Yes| Code
     More -->|No| Done([Done for the day])
@@ -159,13 +159,13 @@ If you accidentally commit a secret key, you must rotate (regenerate) it immedia
 Your repository at GitHub holds:
 
 ```mermaid
-graph TD
-    Repo["GitHub Repository"]
-    Repo --> Code["All your source code"]
-    Repo --> History["Full commit history"]
-    Repo --> Issues["Issues (bugs / tasks)"]
-    Repo --> Actions["Actions (automated workflows)"]
-    Repo --> Settings["Settings (Vercel webhook, etc.)"]
+flowchart TD
+    Repo[GitHub Repository]
+    Repo --> Code[All your source code]
+    Repo --> History[Full commit history]
+    Repo --> Issues[Issues bugs and tasks]
+    Repo --> Actions[Actions automated workflows]
+    Repo --> Settings[Settings Vercel webhook etc]
 ```
 
 **Repository URL pattern:** `github.com/your-username/your-repo-name`

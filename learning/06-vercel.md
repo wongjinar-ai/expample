@@ -7,11 +7,11 @@
 Without Vercel (or something similar), your app would only work on your own computer.
 
 ```mermaid
-graph LR
-    Local["Your Laptop\n(localhost:3000)"]
-    GitHub["GitHub\n(code repository)"]
-    Vercel["Vercel\n(public on the internet)"]
-    Users["Anyone with a browser\n(your hotel staff)"]
+flowchart LR
+    Local[Your Laptop localhost 3000]
+    GitHub[GitHub code repository]
+    Vercel[Vercel public on the internet]
+    Users[Anyone with a browser your hotel staff]
 
     Local -->|"git push"| GitHub
     GitHub -->|"auto-deploy"| Vercel
@@ -66,15 +66,15 @@ The whole process takes about 1–2 minutes.
 **CDN** stands for Content Delivery Network. Instead of your app running on one server in one location, Vercel copies it to servers all around the world.
 
 ```mermaid
-graph TD
-    Vercel["Your App on Vercel"]
-    Vercel --> SGP["Server in Singapore"]
-    Vercel --> USA["Server in USA"]
-    Vercel --> EU["Server in Europe"]
-    Vercel --> JP["Server in Japan"]
+flowchart TD
+    Vercel[Your App on Vercel]
+    Vercel --> SGP[Server in Singapore]
+    Vercel --> USA[Server in USA]
+    Vercel --> EU[Server in Europe]
+    Vercel --> JP[Server in Japan]
 
-    Staff["Staff in Chiang Mai"] --> SGP
-    Tourist["Tourist booking from Germany"] --> EU
+    Staff[Staff in Chiang Mai] --> SGP
+    Tourist[Tourist booking from Germany] --> EU
 ```
 
 The user gets served by the nearest server — so the app loads fast regardless of where they are.
@@ -105,10 +105,10 @@ flowchart TD
 Your app needs secret keys (like the Supabase URL and anon key) to work. On your laptop, these live in `.env.local`. On Vercel, you add them manually in the dashboard.
 
 ```mermaid
-graph LR
-    Local[".env.local\n(on your laptop)"]
-    VercelDash["Vercel Dashboard\nProject → Settings → Env Vars"]
-    VercelRuntime["Vercel Runtime\n(app reads these when running)"]
+flowchart LR
+    Local[.env.local on your laptop]
+    VercelDash[Vercel Dashboard Project Settings Env Vars]
+    VercelRuntime[Vercel Runtime app reads these when running]
 
     Local -->|"copy values manually"| VercelDash
     VercelDash -->|"injected at build & runtime"| VercelRuntime
@@ -215,10 +215,10 @@ Then update your domain's DNS settings (at your domain registrar) to point to Ve
 
 ```mermaid
 flowchart LR
-    Code["Write code"] --> Push["git push to GitHub"]
-    Push --> Auto["Vercel auto-deploys\n(~1 minute)"]
-    Auto --> Live["App is live at your URL"]
-    Live --> Staff["Staff access it anywhere"]
+    Code[Write code] --> Push[git push to GitHub]
+    Push --> Auto[Vercel auto-deploys ~1 minute]
+    Auto --> Live[App is live at your URL]
+    Live --> Staff[Staff access it anywhere]
 ```
 
 Vercel removes the complexity of servers, HTTPS certificates, and deployment pipelines. You write code, push to GitHub, and it is live. That is the entire workflow.
