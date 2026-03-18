@@ -2,7 +2,7 @@
 
 A web app for managing hotel operations at Himmapun Retreat, Chiang Mai, Thailand. Built with Next.js and Supabase. Staff access it from any device via a Vercel URL.
 
-AI-powered booking intake is handled via a Claude Code skill (`/new-booking`) — paste a screenshot from Booking.com, Agoda, or Airbnb directly into Claude Code and it extracts the details and saves the booking to the database automatically.
+AI-powered booking intake is handled via a Claude Code slash command (`/new-booking`) — paste a screenshot from Booking.com, Agoda, or Airbnb directly into Claude Code and it extracts the details and saves the booking to the database automatically.
 
 ---
 
@@ -14,7 +14,7 @@ AI-powered booking intake is handled via a Claude Code skill (`/new-booking`) �
 - **Cleaning Plan** — Room-by-room cleaning status, inline editable without opening a modal
 - **Staff Shifts** — Weekly rota table and today's shift cards
 - **Monthly Summary** — Occupancy %, room income, OTA commissions, and other income sources (cafe, Grab, LINE MAN, cooking class, vehicle rental)
-- **`/new-booking` skill** — Paste an OTA screenshot into Claude Code; Claude extracts guest name, dates, price, commission, and booking reference and saves it directly to the database
+- **`/new-booking` slash command** — Paste an OTA screenshot into Claude Code; Claude extracts guest name, dates, price, commission, and booking reference and saves it directly to the database
 
 ---
 
@@ -51,7 +51,7 @@ AI-powered booking intake is handled via a Claude Code skill (`/new-booking`) �
 | Auth | Supabase Auth (email + password) |
 | Styling | TailwindCSS |
 | Fonts | Google Fonts — Fraunces, DM Sans, DM Mono |
-| AI booking intake | Claude Code `/new-booking` skill (owner's machine only) |
+| AI booking intake | Claude Code `/new-booking` slash command (owner's machine only) |
 
 ---
 
@@ -68,23 +68,18 @@ AI-powered booking intake is handled via a Claude Code skill (`/new-booking`) �
 ```bash
 git clone https://github.com/wongjinar-ai/expample.git
 cd expample
-
-npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --no-git
-npm install @supabase/supabase-js @supabase/ssr
+npm install
 ```
 
 ### Environment Variables
 
-Create `.env.local` in the project root (never commit this file):
+Create `.env` in the project root (never commit this file):
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
-
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase dashboard → Project Settings → API
-- `SUPABASE_SERVICE_ROLE_KEY` — from the same page, under `service_role` (secret) — used only by the `/new-booking` Claude Code skill on your local machine
 
 ### Run locally
 
@@ -102,7 +97,7 @@ npm run dev
 2. Fill in guest name, room, check-in/out dates, source, and price.
 3. Click **Save Booking**.
 
-### Adding a Booking via Screenshot (Claude Code skill)
+### Adding a Booking via Screenshot (Claude Code slash command)
 1. Paste a screenshot from Booking.com, Agoda, or Airbnb into this Claude Code session.
 2. Type `/new-booking`.
 3. Claude extracts the details and shows a confirmation table.
@@ -124,64 +119,6 @@ Open the **Cleaning Plan** tab and change the status dropdown inline — no moda
 6. Monthly Rooms×Days denominator is fixed at **300** (10 rooms × 30 days).
 7. The All Bookings date filter shows bookings that **overlap** the selected range.
 8. Day Guest Overview always shows **all 12 rooms**, even when vacant.
-
----
-
-## Data Model
-
-### Booking
-
-```typescript
-interface Booking {
-  id: number;
-  guest: string;
-  guest2: string;
-  room: RoomName;
-  type: 'Standard' | 'Tent' | 'Bungalow' | 'Extra';
-  guests: number;
-  checkin: string;           // YYYY-MM-DD
-  checkout: string;          // YYYY-MM-DD
-  nights: number;            // auto-calculated
-  source: 'Direct' | 'Booking.com' | 'Agoda' | 'Airbnb' | 'Other';
-  gross: number;             // total price charged (฿)
-  comm: number;              // OTA commission (฿), entered manually
-  net_income: number;        // auto-calculated: gross - comm
-  status: 'Upcoming' | 'Check-in' | 'Occupied' | 'Checkout' | 'Completed';
-  clean_status: '🟢 Clean' | '🔴 Needs Cleaning' | '🟡 In Progress';
-  special: string;
-  tm30: boolean;
-  booking_ref: string;
-}
-```
-
-### Monthly Other Income
-
-```typescript
-interface MonthlyIncome {
-  month: string;    // e.g. "Jan 2026"
-  cafe: number;
-  grab: number;
-  lineman: number;
-  cooking: number;
-  vehicle: number;
-}
-```
-
----
-
-## Design System
-
-| Token | Value |
-|-------|-------|
-| Background | `#0e0f0e` |
-| Surface | `#161815` |
-| Surface 2 | `#1e201d` |
-| Accent | `#c8e84a` |
-| Text | `#e8ead5` |
-| Text muted | `#9a9c8a` |
-| Display font | Fraunces (serif) |
-| Body font | DM Sans |
-| Mono font | DM Mono |
 
 ---
 
@@ -211,7 +148,7 @@ src/
 └── middleware.ts               Auth session guard
 
 .claude/commands/
-└── new-booking.md              Claude Code skill for screenshot intake
+└── new-booking.md              Claude Code slash command for screenshot intake
 ```
 
 ---
