@@ -117,6 +117,19 @@ interface Booking {
 
 ---
 
+## Supabase Credentials & Tokens
+
+| Key | Where to find it | Where it lives |
+|-----|-----------------|----------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL | `.env` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → anon/public key | `.env` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → service_role key | `.env` (never Vercel) |
+| `SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens → Generate new token | `.env` temporarily, delete after use |
+
+The `SUPABASE_ACCESS_TOKEN` is a personal access token used for admin tasks (e.g. running SQL via the Management API). Generate it when needed, use it, then delete it from `.env` immediately after.
+
+---
+
 ## /new-booking Slash Command
 
 The `.claude/commands/new-booking.md` file defines a slash command for adding bookings from OTA screenshots without touching the app UI.
