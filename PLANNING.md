@@ -5,6 +5,21 @@
 
 ---
 
+## Table of Contents
+
+1. [Decisions Summary](#decisions-summary)
+2. [Tech Stack](#tech-stack)
+3. [Architecture](#architecture)
+4. [Database Design](#database-design)
+5. [Sequence Diagrams](#sequence-diagrams)
+6. [User Journeys](#user-journeys)
+7. [Project Structure](#project-structure)
+8. [Milestones & Working Packages](#milestones--working-packages)
+9. [Setup Instructions](#setup-instructions)
+10. [Decisions Log](#decisions-log)
+
+---
+
 ## Decisions Summary
 
 | Question | Decision |
@@ -14,10 +29,10 @@
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (individual accounts, single role) |
 | AI | Anthropic Messages API — server-side only (API key in `.env`) |
-| Styling | TailwindCSS (recommended — responsive, beginner-friendly) |
+| Styling | TailwindCSS |
 | Real-time sync | Not needed — page refresh acceptable |
 | Mobile | Responsive web app (not PWA) |
-| Data migration | Import existing Google Sheets data |
+| Data migration | Deferred — start with clean database |
 
 ---
 
@@ -27,106 +42,441 @@
 - Full-stack: UI and API routes in one project
 - Vercel-native — zero-config deployment
 - File-based routing maps naturally to the 6 panels
-- Server Actions and API Routes let us keep secrets server-side
+- API Routes keep the Anthropic key server-side
 
 ### Supabase
 - Managed PostgreSQL — no server to run
 - Built-in Auth with email/password (individual staff accounts)
 - Free tier is sufficient for this property's scale
 - Dashboard UI makes it easy to inspect and edit data directly
-- Easy to migrate from: just import a CSV from Google Sheets
+- Row Level Security (RLS) enforces auth at the database level
 
-### Anthropic API (Server-side)
+### Anthropic API (Server-side only)
 - API key stored in Vercel environment variable — never exposed to the browser
-- Screenshot uploaded from the browser → sent to a Next.js API route → API route calls Anthropic → returns extracted JSON to the client
-- This is the only backend-required feature
+- Screenshot → Next.js API route → Anthropic → extracted JSON back to client
 
 ### TailwindCSS
-- Utility-first, responsive by default — good for mobile layout
-- No context-switching between CSS files
-- Easy to implement the custom dark design system using CSS variables + Tailwind config
+- Utility-first, responsive by default
+- Custom dark design tokens configured in `tailwind.config.ts`
 
 ---
 
-## Architecture Overview
+## Architecture
 
-```
-Browser (Next.js frontend)
-        │
-        ├── Supabase JS client ──────────────► Supabase (DB + Auth)
-        │   (bookings CRUD, auth session)       PostgreSQL tables
-        │
-        └── fetch('/api/parse-screenshot') ──► Next.js API Route
-                                                 │
-                                                 └── Anthropic API
-                                                     (claude-sonnet-4-20250514)
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph Client["Browser (Any Device)"]
+        UI[Next.js Frontend]
+    end
+
+    subgraph Vercel["Vercel (Hosting)"]
+        APP[Next.js App Router]
+        API["/api/parse-screenshot\nAPI Route"]
+    end
+
+    subgraph Supabase["Supabase"]
+        AUTH[Auth Service]
+        DB[(PostgreSQL\nDatabase)]
+        RLS[Row Level\nSecurity]
+    end
+
+    subgraph Anthropic["Anthropic"]
+        CLAUDE[claude-sonnet-4-20250514]
+    end
+
+    UI -->|"page requests"| APP
+    UI -->|"CRUD via JS client"| DB
+    UI -->|"session / login"| AUTH
+    UI -->|"POST image"| API
+    API -->|"x-api-key: env var"| CLAUDE
+    CLAUDE -->|"extracted JSON"| API
+    API -->|"booking fields"| UI
+    DB --- RLS
+    AUTH -->|"auth.uid()"| RLS
+
+    style Client fill:#1e201d,stroke:#c8e84a,color:#e8ead5
+    style Vercel fill:#1e201d,stroke:#60a5fa,color:#e8ead5
+    style Supabase fill:#1e201d,stroke:#4ade80,color:#e8ead5
+    style Anthropic fill:#1e201d,stroke:#fbbf24,color:#e8ead5
 ```
 
-- All database reads/writes go through the Supabase JS client directly from the browser (using Row Level Security policies)
-- Only the AI screenshot parsing goes through a Next.js API route (to hide the API key)
-- Auth session is managed by Supabase Auth — session token stored in browser cookie
+### Deployment Pipeline
+
+```mermaid
+graph LR
+    DEV[Local Dev\nlocalhost:3000] -->|git push| GH[GitHub\nmain branch]
+    GH -->|auto-deploy| VCL[Vercel\nProduction]
+    VCL -->|env vars| ENV[".env on Vercel\nAnthropicKey\nSupabase keys"]
+
+    style DEV fill:#1e201d,stroke:#9a9c8a,color:#e8ead5
+    style GH fill:#1e201d,stroke:#9a9c8a,color:#e8ead5
+    style VCL fill:#1e201d,stroke:#60a5fa,color:#e8ead5
+    style ENV fill:#1e201d,stroke:#f87171,color:#e8ead5
+```
 
 ---
 
-## Database Schema
+## Database Design
 
-### `bookings`
-```sql
-id            bigint          primary key, auto-increment
-guest         text            not null
-guest2        text
-room          text            not null
-type          text            not null   -- Standard | Tent | Bungalow | Extra
-guests        integer         not null   default 1
-checkin       date            not null
-checkout      date            not null
-nights        integer         not null   -- calculated: checkout - checkin
-source        text            not null   -- Direct | Booking.com | Agoda | Airbnb | Other
-gross         integer         not null   default 0   -- ฿, no decimals
-comm          integer         not null   default 0   -- ฿, from OTA statement
-net_income    integer         not null   -- calculated: gross - comm
-status        text            not null   -- Upcoming | Check-in | Occupied | Checkout | Completed
-clean_status  text            not null   default '🟢 Clean'
-special       text
-tm30          boolean         not null   default false
-booking_ref   text
-created_at    timestamptz     default now()
-updated_at    timestamptz     default now()
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    BOOKINGS {
+        bigint id PK
+        text guest
+        text guest2
+        text room
+        text type
+        integer guests
+        date checkin
+        date checkout
+        integer nights
+        text source
+        integer gross
+        integer comm
+        integer net_income
+        text status
+        text clean_status
+        text special
+        boolean tm30
+        text booking_ref
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    MONTHLY_INCOME {
+        bigint id PK
+        text month
+        integer cafe
+        integer grab
+        integer lineman
+        integer cooking
+        integer vehicle
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    STAFF {
+        bigint id PK
+        text name
+        text role
+        text shift
+        text time
+        text mon
+        text tue
+        text wed
+        text thu
+        text fri
+        text sat
+        text sun
+    }
+
+    AUTH_USERS {
+        uuid id PK
+        text email
+        timestamptz created_at
+    }
+
+    AUTH_USERS ||--o{ BOOKINGS : "authenticated users manage"
+    AUTH_USERS ||--o{ MONTHLY_INCOME : "authenticated users manage"
+    AUTH_USERS ||--o{ STAFF : "authenticated users manage"
 ```
 
-### `monthly_income`
+### Table Definitions (SQL)
+
+#### `bookings`
 ```sql
-id            bigint          primary key, auto-increment
-month         text            not null unique   -- e.g. "Jan 2026"
-cafe          integer         not null   default 0
-grab          integer         not null   default 0
-lineman       integer         not null   default 0
-cooking       integer         not null   default 0
-vehicle       integer         not null   default 0
-created_at    timestamptz     default now()
-updated_at    timestamptz     default now()
+create table bookings (
+  id           bigserial primary key,
+  guest        text        not null,
+  guest2       text,
+  room         text        not null,
+  type         text        not null,   -- Standard | Tent | Bungalow | Extra
+  guests       integer     not null default 1,
+  checkin      date        not null,
+  checkout     date        not null,
+  nights       integer     not null,   -- auto-calculated on save
+  source       text        not null,   -- Direct | Booking.com | Agoda | Airbnb | Other
+  gross        integer     not null default 0,
+  comm         integer     not null default 0,
+  net_income   integer     not null,   -- auto-calculated: gross - comm
+  status       text        not null,   -- Upcoming | Check-in | Occupied | Checkout | Completed
+  clean_status text        not null default '🟢 Clean',
+  special      text,
+  tm30         boolean     not null default false,
+  booking_ref  text,
+  created_at   timestamptz default now(),
+  updated_at   timestamptz default now()
+);
+
+-- Row Level Security
+alter table bookings enable row level security;
+create policy "Authenticated users only" on bookings
+  for all using (auth.role() = 'authenticated');
 ```
 
-### `staff`
+#### `monthly_income`
 ```sql
-id            bigint          primary key, auto-increment
-name          text            not null
-role          text            not null   -- Front Desk | Housekeeping | Maintenance | Security
-shift         text            not null   -- Morning | Evening | Night
-time          text                       -- e.g. "07:00–15:00"
-mon           text            default 'Off'
-tue           text            default 'Off'
-wed           text            default 'Off'
-thu           text            default 'Off'
-fri           text            default 'Off'
-sat           text            default 'Off'
-sun           text            default 'Off'
+create table monthly_income (
+  id        bigserial primary key,
+  month     text    not null unique,  -- e.g. "Jan 2026"
+  cafe      integer not null default 0,
+  grab      integer not null default 0,
+  lineman   integer not null default 0,
+  cooking   integer not null default 0,
+  vehicle   integer not null default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table monthly_income enable row level security;
+create policy "Authenticated users only" on monthly_income
+  for all using (auth.role() = 'authenticated');
 ```
 
-### Auth (managed by Supabase Auth)
-- Table: `auth.users` — built-in, managed by Supabase
-- No custom roles for now — all authenticated users get full access
-- Use Supabase Row Level Security (RLS): `auth.role() = 'authenticated'` on all tables
+#### `staff`
+```sql
+create table staff (
+  id    bigserial primary key,
+  name  text not null,
+  role  text not null,   -- Front Desk | Housekeeping | Maintenance | Security
+  shift text not null,   -- Morning | Evening | Night
+  time  text,            -- e.g. "07:00–15:00"
+  mon   text default 'Off',
+  tue   text default 'Off',
+  wed   text default 'Off',
+  thu   text default 'Off',
+  fri   text default 'Off',
+  sat   text default 'Off',
+  sun   text default 'Off'
+);
+
+alter table staff enable row level security;
+create policy "Authenticated users only" on staff
+  for all using (auth.role() = 'authenticated');
+```
+
+---
+
+## Sequence Diagrams
+
+### 1. Login Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Middleware as Next.js Middleware
+    participant Supabase as Supabase Auth
+
+    User->>Browser: Visit app URL
+    Browser->>Middleware: GET /dashboard
+    Middleware->>Middleware: Check session cookie
+    Middleware-->>Browser: No session → redirect /login
+
+    User->>Browser: Enter email + password
+    Browser->>Supabase: signInWithPassword(email, password)
+    Supabase-->>Browser: Session token + user object
+    Browser->>Browser: Store session in cookie
+    Browser->>Middleware: GET /dashboard
+    Middleware->>Middleware: Session valid ✓
+    Middleware-->>Browser: Render dashboard
+```
+
+### 2. Manual Booking Creation
+
+```mermaid
+sequenceDiagram
+    actor Staff
+    participant Browser
+    participant Supabase as Supabase DB
+
+    Staff->>Browser: Click "+ New Booking"
+    Browser->>Browser: Open modal, clear form
+
+    Staff->>Browser: Fill in all fields manually
+    Staff->>Browser: Click "Save Booking"
+
+    Browser->>Browser: Validate required fields
+    Browser->>Browser: Calculate nights = checkout - checkin
+    Browser->>Browser: Calculate net_income = gross - comm
+    Browser->>Browser: Derive type from ROOM_TYPES[room]
+
+    Browser->>Supabase: INSERT INTO bookings (...)
+    Supabase-->>Browser: New booking row with id
+
+    Browser->>Browser: Close modal
+    Browser->>Browser: Re-render active panel + dashboard
+```
+
+### 3. AI Screenshot Booking
+
+```mermaid
+sequenceDiagram
+    actor Staff
+    participant Browser
+    participant API as Next.js API Route
+    participant Anthropic as Anthropic API
+    participant Supabase as Supabase DB
+
+    Staff->>Browser: Click "+ New Booking"
+    Browser->>Browser: Open modal
+
+    Staff->>Browser: Drop/select screenshot image
+    Browser->>Browser: FileReader.readAsDataURL(file)
+    Browser->>Browser: Extract base64 string
+    Browser->>Browser: Show loading spinner
+
+    Browser->>API: POST /api/parse-screenshot\n{ image: base64, mimeType }
+    API->>API: Verify auth session
+    API->>Anthropic: POST /v1/messages\n{ image, extraction prompt }\nx-api-key: process.env
+
+    Anthropic-->>API: { guest, checkin, checkout,\nguests, source, gross,\ncomm, booking_number, special }
+
+    API-->>Browser: Extracted booking fields
+
+    Browser->>Browser: Auto-fill form fields
+    Browser->>Browser: Show thumbnail + summary
+    Browser->>Browser: Hide spinner
+
+    Staff->>Browser: Select room (only manual step)
+    Staff->>Browser: Verify & click "Save Booking"
+
+    Browser->>Supabase: INSERT INTO bookings (...)
+    Supabase-->>Browser: Saved ✓
+    Browser->>Browser: Close modal, re-render
+```
+
+### 4. Inline Clean Status Update
+
+```mermaid
+sequenceDiagram
+    actor Staff
+    participant Browser
+    participant Supabase as Supabase DB
+
+    Staff->>Browser: Open Cleaning Plan tab
+    Browser->>Supabase: SELECT * FROM bookings WHERE status IN (...)
+    Supabase-->>Browser: Active bookings
+
+    Browser->>Browser: Render table with inline dropdowns
+
+    Staff->>Browser: Change clean status dropdown\n(e.g. "Needs Cleaning" → "In Progress")
+
+    Browser->>Supabase: UPDATE bookings\nSET clean_status = '🟡 In Progress'\nWHERE id = ?
+    Supabase-->>Browser: Updated ✓
+
+    Browser->>Browser: Re-render cleaning table row
+```
+
+### 5. Vercel Deployment
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer (local)
+    participant GitHub
+    participant Vercel
+    participant User as Staff (browser)
+
+    Dev->>GitHub: git push origin main
+    GitHub->>Vercel: Webhook trigger (new commit)
+    Vercel->>Vercel: Pull code
+    Vercel->>Vercel: npm run build
+    Vercel->>Vercel: Deploy to CDN
+    Vercel-->>Dev: Deploy URL + build logs
+
+    User->>Vercel: Visit app URL
+    Vercel-->>User: Serve Next.js app
+```
+
+---
+
+## User Journeys
+
+### Journey 1 — Owner: Morning Review
+
+```mermaid
+journey
+    title Owner Morning Review
+    section Open App
+      Visit app URL on phone: 5: Owner
+      Login with email + password: 4: Owner
+      Land on Dashboard: 5: Owner
+    section Check Today
+      See metric cards (occupancy, check-ins): 5: Owner
+      Review who is checking in today: 5: Owner
+      Review who is checking out today: 5: Owner
+    section Financials
+      Check gross revenue for active bookings: 4: Owner
+      Check net income after commission: 4: Owner
+    section Plan the Day
+      Open Cleaning Plan tab: 5: Owner
+      See which rooms need cleaning: 5: Owner
+      Check staff shifts for today: 4: Owner
+```
+
+### Journey 2 — Staff: Add a New Booking from OTA Screenshot
+
+```mermaid
+journey
+    title Staff Adding Booking via Screenshot
+    section Receive Booking
+      Get notification from Booking.com: 5: Staff
+      Take screenshot of booking details: 4: Staff
+    section Open App
+      Open hotel app on phone: 5: Staff
+      Click + New Booking: 5: Staff
+    section Upload Screenshot
+      Drop screenshot into upload zone: 4: Staff
+      Wait for AI to extract details: 3: Staff
+      Review auto-filled form fields: 5: Staff
+    section Complete Booking
+      Select the correct room: 5: Staff
+      Verify dates and price: 4: Staff
+      Click Save Booking: 5: Staff
+      See booking appear in list: 5: Staff
+```
+
+### Journey 3 — Housekeeping: Cleaning Workflow
+
+```mermaid
+journey
+    title Housekeeping Morning Workflow
+    section Start Shift
+      Open app on phone: 5: Housekeeper
+      Go to Cleaning Plan tab: 5: Housekeeper
+      Filter by "Checkout today": 5: Housekeeper
+    section Clean Rooms
+      See list of rooms to clean: 5: Housekeeper
+      Change status to "In Progress": 4: Housekeeper
+      Clean the room: 5: Housekeeper
+      Change status to "Clean": 5: Housekeeper
+    section Check-ins Ready
+      Filter by "Check-in today": 5: Housekeeper
+      Confirm all rooms are marked Clean: 5: Housekeeper
+```
+
+### Journey 4 — Owner: Monthly Reporting
+
+```mermaid
+journey
+    title Owner Monthly Summary Review
+    section Open Monthly Tab
+      Navigate to Monthly Summary: 5: Owner
+      See occupancy % for each month: 5: Owner
+    section Review Income
+      Check gross room revenue: 5: Owner
+      Check OTA commissions deducted: 4: Owner
+      Check net room income: 5: Owner
+    section Other Income
+      Enter cafe income for the month: 4: Owner
+      Enter Grab + LINE MAN income: 4: Owner
+      Enter cooking class income: 4: Owner
+      See total monthly income auto-calculated: 5: Owner
+```
 
 ---
 
@@ -134,189 +484,352 @@ sun           text            default 'Off'
 
 ```
 /
-├── app/
-│   ├── layout.tsx              Root layout (fonts, auth provider)
-│   ├── page.tsx                Redirects to /dashboard
-│   ├── login/
-│   │   └── page.tsx            Login form (Supabase Auth)
-│   ├── dashboard/
-│   │   └── page.tsx
-│   ├── day-guest/
-│   │   └── page.tsx
-│   ├── bookings/
-│   │   └── page.tsx
-│   ├── cleaning/
-│   │   └── page.tsx
-│   ├── shifts/
-│   │   └── page.tsx
-│   └── monthly/
-│       └── page.tsx
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx                Root layout (fonts, Supabase provider)
+│   │   ├── page.tsx                  Redirect → /dashboard
+│   │   ├── login/
+│   │   │   └── page.tsx              Email + password login form
+│   │   ├── dashboard/
+│   │   │   └── page.tsx              Metric cards, weekly grid, room status
+│   │   ├── day-guest/
+│   │   │   └── page.tsx              Room × date grid
+│   │   ├── bookings/
+│   │   │   └── page.tsx              Full booking list with filters
+│   │   ├── cleaning/
+│   │   │   └── page.tsx              Room cleaning status table
+│   │   ├── shifts/
+│   │   │   └── page.tsx              Staff weekly rota
+│   │   ├── monthly/
+│   │   │   └── page.tsx              Monthly income summary
+│   │   └── api/
+│   │       └── parse-screenshot/
+│   │           └── route.ts          Server-side Anthropic call
+│   │
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Sidebar.tsx           Nav links, logo, date badge
+│   │   │   └── Topbar.tsx            Page title, + New Booking button
+│   │   ├── bookings/
+│   │   │   ├── BookingModal.tsx      New / edit booking form
+│   │   │   └── ScreenshotUpload.tsx  Drag-and-drop upload zone
+│   │   ├── dashboard/
+│   │   │   ├── MetricCards.tsx       6 stat cards
+│   │   │   ├── WeeklyGrid.tsx        7-day occupancy grid
+│   │   │   └── OccupancyByRoom.tsx   Per-room guest dots
+│   │   └── ui/
+│   │       ├── Badge.tsx             Room type, status, source badges
+│   │       └── StatusDropdown.tsx    Inline clean status selector
+│   │
+│   ├── lib/
+│   │   ├── supabase/
+│   │   │   ├── client.ts             Browser Supabase client
+│   │   │   └── server.ts             Server Supabase client (API routes)
+│   │   ├── constants.ts              ROOMS, ROOM_TYPES, OCC_ROOMS, SOURCES
+│   │   └── helpers.ts                fmtDate, fmtMoney, calcNights, isStayingOn
+│   │
+│   └── middleware.ts                 Auth session check on all routes
 │
-├── api/
-│   └── parse-screenshot/
-│       └── route.ts            Calls Anthropic API server-side
-│
-├── components/
-│   ├── layout/
-│   │   ├── Sidebar.tsx
-│   │   └── Topbar.tsx
-│   ├── bookings/
-│   │   ├── BookingModal.tsx
-│   │   └── ScreenshotUpload.tsx
-│   ├── dashboard/
-│   │   ├── MetricCards.tsx
-│   │   ├── WeeklyGrid.tsx
-│   │   └── OccupancyByRoom.tsx
-│   └── ui/
-│       ├── Badge.tsx           Room type, status, source badges
-│       └── StatusDropdown.tsx  Inline clean status selector
-│
-├── lib/
-│   ├── supabase/
-│   │   ├── client.ts           Browser Supabase client
-│   │   └── server.ts           Server Supabase client (for API routes)
-│   ├── constants.ts            ROOMS, ROOM_TYPES, OCC_ROOMS, SOURCES
-│   └── helpers.ts              fmtDate, fmtMoney, calcNights, isStayingOn
-│
-├── .env.local                  ANTHROPIC_API_KEY, Supabase keys
-└── tailwind.config.ts          Design tokens (colors, fonts)
+├── .env.local                        Local secrets (never committed)
+├── .env.example                      Template with key names only
+├── tailwind.config.ts                Design tokens (colors, fonts)
+└── next.config.ts                    Next.js config
 ```
 
 ---
 
-## Authentication Flow
+## Milestones & Working Packages
 
-1. Unauthenticated users are redirected to `/login`
-2. Login via Supabase Auth (email + password)
-3. Session stored in browser cookie — persists across refreshes
-4. Supabase middleware checks session on every request
-5. Staff accounts are created manually in the Supabase Auth dashboard (no self-signup)
+### Overview
 
----
-
-## AI Screenshot Parsing Flow (Secured)
-
+```mermaid
+gantt
+    title Himmapun Retreat App — Build Milestones
+    dateFormat  YYYY-MM-DD
+    section M0 · Setup
+        Node.js install          :m0a, 2026-03-18, 1d
+        Supabase project         :m0b, after m0a, 1d
+        GitHub + Vercel connect  :m0c, after m0b, 1d
+    section M1 · Foundation
+        Scaffold Next.js         :m1a, after m0c, 1d
+        Auth + middleware        :m1b, after m1a, 1d
+        Layout shell             :m1c, after m1b, 1d
+    section M2 · Core Bookings
+        Bookings list + filters  :m2a, after m1c, 2d
+        New / Edit modal         :m2b, after m2a, 2d
+        Cleaning Plan            :m2c, after m2b, 1d
+    section M3 · Dashboard
+        Dashboard metrics        :m3a, after m2c, 2d
+        Day Guest Overview       :m3b, after m3a, 1d
+        Staff Shifts             :m3c, after m3b, 1d
+    section M4 · AI + Monthly
+        Screenshot API route     :m4a, after m3c, 1d
+        Monthly Summary page     :m4b, after m4a, 2d
+    section M5 · Polish
+        Mobile QA                :m5a, after m4b, 1d
+        Data migration           :m5b, after m5a, 1d
+        Staff UAT                :m5c, after m5b, 2d
 ```
-Browser                         Next.js API Route              Anthropic
-   │                                    │                          │
-   │  POST /api/parse-screenshot        │                          │
-   │  { image: base64, type: mime }     │                          │
-   │ ─────────────────────────────────► │                          │
-   │                                    │  POST /v1/messages       │
-   │                                    │  x-api-key: process.env  │
-   │                                    │ ────────────────────────►│
-   │                                    │                          │
-   │                                    │  { guest, checkin, ... } │
-   │                                    │ ◄────────────────────────│
-   │  { guest, checkin, checkout, ... } │                          │
-   │ ◄─────────────────────────────────  │                          │
-```
-
-- `ANTHROPIC_API_KEY` lives only in Vercel environment variables
-- The browser never sees the key
-- API route validates that the request is authenticated before calling Anthropic
 
 ---
 
-## Data Migration from Google Sheets
+### M0 — Infrastructure Setup
+**Goal:** All external services created and connected before any code is written.
 
-1. Export each relevant sheet tab as CSV from Google Sheets
-2. Map column names to the `bookings` and `monthly_income` schema above
-3. Clean and transform dates to `YYYY-MM-DD` format
-4. Import via Supabase dashboard CSV import tool (no code needed)
-5. Verify row counts match after import
+| # | Task | How |
+|---|------|-----|
+| M0.1 | Install Node.js | See [Setup Instructions → Step 1](#step-1-install-nodejs) |
+| M0.2 | Create Supabase project | See [Setup Instructions → Step 2](#step-2-create-supabase-project) |
+| M0.3 | Create Vercel account + connect GitHub repo | See [Setup Instructions → Step 3](#step-3-connect-vercel) |
+| M0.4 | Get Anthropic API key | See [Setup Instructions → Step 4](#step-4-get-anthropic-api-key) |
+
+**Done when:** `node -v` returns a version, Supabase project exists, Vercel is connected to the GitHub repo, and you have all three API keys ready.
 
 ---
 
-## Prerequisites — Before Starting Phase 1
+### M1 — Foundation
+**Goal:** A running Next.js app deployed on Vercel with login working.
 
-Node.js is required to run the project. It is not yet installed on this machine.
+| # | Task |
+|---|------|
+| M1.1 | Scaffold Next.js project in repo root |
+| M1.2 | Configure Tailwind with design tokens (colors, fonts) |
+| M1.3 | Install Supabase + Anthropic packages |
+| M1.4 | Create Supabase DB tables + RLS policies (copy SQL from this doc) |
+| M1.5 | Create `.env.local` with Supabase + Anthropic keys |
+| M1.6 | Build login page (`/login`) |
+| M1.7 | Add `middleware.ts` to protect all routes |
+| M1.8 | Build sidebar + topbar layout shell |
+| M1.9 | Deploy to Vercel + add env vars in Vercel dashboard |
+| M1.10 | Create first staff account in Supabase Auth dashboard |
 
-### Install Node.js (do this first)
+**Done when:** Staff can log in at the Vercel URL, see the layout shell, and log out.
 
-**Option A — via nvm (recommended):**
+---
+
+### M2 — Core Booking Features
+**Goal:** Staff can create, view, edit, delete bookings and update clean status.
+
+| # | Task |
+|---|------|
+| M2.1 | All Bookings page — table with all rows from Supabase |
+| M2.2 | Status, room, source filter dropdowns |
+| M2.3 | Date range filter (overlap logic) |
+| M2.4 | "+ New Booking" modal — manual entry form |
+| M2.5 | Auto-calculate nights + net income on form |
+| M2.6 | Save new booking to Supabase |
+| M2.7 | Edit existing booking (pre-fill modal) |
+| M2.8 | Delete booking with confirmation |
+| M2.9 | Cleaning Plan page — all 12 rooms always shown |
+| M2.10 | Inline clean status dropdown — updates Supabase immediately |
+
+**Done when:** A booking can be created, edited, deleted, and its clean status updated — all reflected in Supabase.
+
+---
+
+### M3 — Dashboard & Views
+**Goal:** The three read-heavy views are working with live data.
+
+| # | Task |
+|---|------|
+| M3.1 | Dashboard — 6 metric cards (occupancy, guests, check-ins, checkouts, gross, net) |
+| M3.2 | Dashboard — "Checking in today" cards |
+| M3.3 | Dashboard — "Checking out today" cards |
+| M3.4 | Dashboard — Upcoming check-ins table (next 7 days) |
+| M3.5 | Dashboard — Weekly occupancy grid (OCC_ROOMS only) |
+| M3.6 | Dashboard — Income summary + source breakdown |
+| M3.7 | Dashboard — Occupancy by room (guest dots) |
+| M3.8 | Day Guest Overview — room × date grid with date selector |
+| M3.9 | Staff Shifts — today's shift cards + weekly rota table |
+
+**Done when:** The dashboard reflects live Supabase data and all three pages render correctly on mobile.
+
+---
+
+### M4 — AI Intake & Monthly Summary
+**Goal:** Screenshot parsing works and the monthly report is complete.
+
+| # | Task |
+|---|------|
+| M4.1 | `/api/parse-screenshot` route — calls Anthropic server-side |
+| M4.2 | Screenshot upload zone in booking modal (drag + drop + browse) |
+| M4.3 | Loading / success / error states in upload zone |
+| M4.4 | Auto-fill form fields from AI response |
+| M4.5 | Monthly Summary page — room income columns from bookings |
+| M4.6 | Monthly other income columns — manually entered per month |
+| M4.7 | Totals row at bottom of monthly table |
+
+**Done when:** Dropping a Booking.com screenshot fills the booking form automatically, and the monthly summary shows correct occupancy % and income totals.
+
+---
+
+### M5 — Polish, Migration & Launch
+**Goal:** App is production-ready and all Google Sheets data is imported.
+
+| # | Task |
+|---|------|
+| M5.1 | Mobile responsive QA — test all pages on iPhone |
+| M5.2 | Export bookings from Google Sheets as CSV |
+| M5.3 | Clean CSV — map columns to DB schema, fix date formats |
+| M5.4 | Import CSV via Supabase dashboard |
+| M5.5 | Verify row counts + spot-check data |
+| M5.6 | Create all staff accounts in Supabase Auth |
+| M5.7 | User acceptance testing with staff |
+| M5.8 | Fix any bugs found during UAT |
+
+**Done when:** All staff can log in, existing booking history is visible, and the app is the primary tool replacing Google Sheets.
+
+---
+
+## Setup Instructions
+
+### Step 1: Install Node.js
+
+Node.js is the runtime required to run the project locally.
+
+**Option A — via nvm (recommended for Mac):**
 ```bash
-# 1. Install nvm (Node Version Manager)
+# Install nvm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 
-# 2. Restart your terminal, then install the LTS version of Node
+# Close and reopen your terminal, then:
 nvm install --lts
 
-# 3. Verify installation
-node -v && npm -v
+# Verify — both should print version numbers
+node -v
+npm -v
 ```
 
-**Option B — direct download:**
-Go to https://nodejs.org and download the LTS installer for macOS.
-
-Once `node -v` and `npm -v` both return version numbers, Node is ready.
+**Option B — direct installer:**
+Go to https://nodejs.org → download the **LTS** version for macOS → run the `.pkg` installer.
 
 ---
 
-### Scaffold the Project (run after Node is installed)
+### Step 2: Create Supabase Project
 
-From the repo root (`/Users/macbookairm1/Documents/Github/expample`):
+1. Go to https://supabase.com and sign up (free)
+2. Click **New Project**
+3. Fill in:
+   - **Name:** `himmapun-retreat`
+   - **Database password:** choose a strong password and save it somewhere safe
+   - **Region:** Southeast Asia (Singapore) — closest to Chiang Mai
+4. Click **Create new project** and wait ~2 minutes for provisioning
+5. Once ready, go to **Project Settings → API**
+6. Copy and save these two values — you will need them later:
+   - **Project URL** (looks like `https://xxxx.supabase.co`)
+   - **anon / public key** (long string starting with `eyJ...`)
+7. Go to **SQL Editor** in the sidebar
+8. Paste and run the three `CREATE TABLE` + `ALTER TABLE` (RLS) SQL blocks from the [Database Design](#database-design) section above
+9. Verify the three tables appear under **Table Editor**
+
+---
+
+### Step 3: Connect Vercel
+
+1. Go to https://vercel.com and sign up with your GitHub account
+2. Click **Add New → Project**
+3. Find and select the `expample` GitHub repository
+4. Under **Framework Preset**, select **Next.js** (auto-detected)
+5. Do **not** deploy yet — click **Environment Variables** first
+6. Add these three variables:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL       = (your Supabase Project URL)
+   NEXT_PUBLIC_SUPABASE_ANON_KEY  = (your Supabase anon key)
+   ANTHROPIC_API_KEY              = (your Anthropic API key — Step 4)
+   ```
+7. Click **Deploy** — the first deploy will fail (no Next.js app yet), that is fine
+8. Note your app URL (e.g. `https://expample.vercel.app`) — this is where the app will live
+
+---
+
+### Step 4: Get Anthropic API Key
+
+1. Go to https://console.anthropic.com and sign in
+2. Click **API Keys** in the left sidebar
+3. Click **Create Key**
+4. Name it `himmapun-retreat`
+5. Copy the key (starts with `sk-ant-...`) — it is only shown once
+6. Add it as `ANTHROPIC_API_KEY` in both:
+   - Your local `.env.local` file (Step 6)
+   - Vercel environment variables (Step 3)
+
+---
+
+### Step 5: Scaffold the Next.js Project
+
+From the repo root in your terminal:
 
 ```bash
-npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --no-git
-```
+# Create the Next.js app (answer "Yes" to all prompts)
+npx create-next-app@latest . \
+  --typescript \
+  --tailwind \
+  --eslint \
+  --app \
+  --src-dir \
+  --import-alias "@/*" \
+  --no-git
 
-Then install Supabase and Anthropic packages:
-```bash
+# Install Supabase and Anthropic packages
 npm install @supabase/supabase-js @supabase/ssr @anthropic-ai/sdk
 ```
 
-Create the environment file:
+---
+
+### Step 6: Configure Environment Variables
+
+Create a `.env.local` file in the project root:
+
 ```bash
-cp .env.example .env.local
+# .env.local — never commit this file
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-Add these keys to `.env.local` (get values from Supabase dashboard and Anthropic console):
-```
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
+Also create a `.env.example` file (safe to commit — no real values):
+
+```bash
+# .env.example — copy to .env.local and fill in your values
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ANTHROPIC_API_KEY=
 ```
 
-Run the dev server:
+Make sure `.env.local` is in `.gitignore` (Next.js adds it by default).
+
+---
+
+### Step 7: Run Locally
+
 ```bash
 npm run dev
 ```
 
-App will be available at http://localhost:3000
+Open http://localhost:3000 — you should see the Next.js default page.
 
 ---
 
-## Build Phases
+### Step 8: Create Staff Accounts in Supabase
 
-### Phase 1 — Foundation
-- [ ] Initialize Next.js project with TailwindCSS
-- [ ] Connect Supabase (DB + Auth)
-- [ ] Create DB tables and RLS policies
-- [ ] Login page + auth middleware
-- [ ] Sidebar + layout shell
+1. Go to your Supabase project dashboard
+2. Click **Authentication → Users** in the sidebar
+3. Click **Invite user** (or **Add user**)
+4. Enter the staff member's email and a temporary password
+5. Repeat for each staff member
+6. Staff can change their password after first login (or you can set it manually)
 
-### Phase 2 — Core Booking Features
-- [ ] All Bookings page (list, filters, date range)
-- [ ] New / Edit Booking modal (manual entry)
-- [ ] Delete booking
-- [ ] Cleaning Plan page (inline clean status update)
+---
 
-### Phase 3 — Dashboard & Views
-- [ ] Dashboard (metric cards, weekly grid, occupancy by room)
-- [ ] Day Guest Overview
-- [ ] Staff Shifts page
+### Step 9: Push and Auto-Deploy
 
-### Phase 4 — AI & Monthly Summary
-- [ ] Screenshot upload + `/api/parse-screenshot` route
-- [ ] Monthly Summary page
-- [ ] Monthly other income (manual entry per month)
+```bash
+git add .
+git commit -m "Initial Next.js scaffold"
+git push origin main
+```
 
-### Phase 5 — Data Migration & Polish
-- [ ] Import Google Sheets data
-- [ ] Mobile responsive QA
-- [ ] Responsive layout polish for small screens
-- [ ] User acceptance testing with staff
+Vercel will automatically detect the push and deploy. Check the **Deployments** tab in Vercel for build logs. After ~1 minute the live URL will be updated.
 
 ---
 
@@ -326,4 +839,6 @@ App will be available at http://localhost:3000
 |----------|--------|
 | Staff email format | Any email — defined per person when creating accounts |
 | Staff account management | Via Supabase Auth dashboard — no in-app admin screen needed |
-| Google Sheets migration | Deferred — start with a clean database on the prototype |
+| Google Sheets migration | Deferred to M5 — start with clean database |
+| Real-time sync | Not needed — page refresh is acceptable |
+| Self-signup | Disabled — owner creates accounts manually in Supabase |
