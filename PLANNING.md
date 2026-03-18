@@ -78,8 +78,8 @@ graph TB
 
     subgraph Supabase["Supabase"]
         AUTH[Auth Service]
-        DB[(PostgreSQL\nDatabase)]
-        RLS[Row Level\nSecurity]
+        DB[(PostgreSQL Database)]
+        RLS[Row Level Security]
     end
 
     subgraph Anthropic["Anthropic"]
@@ -106,9 +106,9 @@ graph TB
 
 ```mermaid
 graph LR
-    DEV[Local Dev\nlocalhost:3000] -->|git push| GH[GitHub\nmain branch]
-    GH -->|auto-deploy| VCL[Vercel\nProduction]
-    VCL -->|env vars| ENV[".env on Vercel\nAnthropicKey\nSupabase keys"]
+    DEV["Local Dev (localhost:3000)"] -->|git push| GH["GitHub (main branch)"]
+    GH -->|auto-deploy| VCL["Vercel (Production)"]
+    VCL -->|reads| ENV["Env Vars on Vercel"]
 
     style DEV fill:#1e201d,stroke:#9a9c8a,color:#e8ead5
     style GH fill:#1e201d,stroke:#9a9c8a,color:#e8ead5
@@ -275,14 +275,14 @@ sequenceDiagram
     User->>Browser: Visit app URL
     Browser->>Middleware: GET /dashboard
     Middleware->>Middleware: Check session cookie
-    Middleware-->>Browser: No session → redirect /login
+    Middleware-->>Browser: No session — redirect to /login
 
-    User->>Browser: Enter email + password
+    User->>Browser: Enter email and password
     Browser->>Supabase: signInWithPassword(email, password)
-    Supabase-->>Browser: Session token + user object
+    Supabase-->>Browser: Session token and user object
     Browser->>Browser: Store session in cookie
     Browser->>Middleware: GET /dashboard
-    Middleware->>Middleware: Session valid ✓
+    Middleware->>Middleware: Session valid
     Middleware-->>Browser: Render dashboard
 ```
 
@@ -294,22 +294,18 @@ sequenceDiagram
     participant Browser
     participant Supabase as Supabase DB
 
-    Staff->>Browser: Click "+ New Booking"
-    Browser->>Browser: Open modal, clear form
-
+    Staff->>Browser: Click New Booking
+    Browser->>Browser: Open modal and clear form
     Staff->>Browser: Fill in all fields manually
-    Staff->>Browser: Click "Save Booking"
-
+    Staff->>Browser: Click Save Booking
     Browser->>Browser: Validate required fields
-    Browser->>Browser: Calculate nights = checkout - checkin
-    Browser->>Browser: Calculate net_income = gross - comm
-    Browser->>Browser: Derive type from ROOM_TYPES[room]
-
-    Browser->>Supabase: INSERT INTO bookings (...)
+    Browser->>Browser: Calculate nights from dates
+    Browser->>Browser: Calculate net income from gross and comm
+    Browser->>Browser: Derive room type from room name
+    Browser->>Supabase: INSERT new booking
     Supabase-->>Browser: New booking row with id
-
     Browser->>Browser: Close modal
-    Browser->>Browser: Re-render active panel + dashboard
+    Browser->>Browser: Re-render panel and dashboard
 ```
 
 ### 3. AI Screenshot Booking
@@ -322,32 +318,24 @@ sequenceDiagram
     participant Anthropic as Anthropic API
     participant Supabase as Supabase DB
 
-    Staff->>Browser: Click "+ New Booking"
+    Staff->>Browser: Click New Booking
     Browser->>Browser: Open modal
-
-    Staff->>Browser: Drop/select screenshot image
-    Browser->>Browser: FileReader.readAsDataURL(file)
-    Browser->>Browser: Extract base64 string
+    Staff->>Browser: Drop or select screenshot image
+    Browser->>Browser: Convert image to base64
     Browser->>Browser: Show loading spinner
-
-    Browser->>API: POST /api/parse-screenshot\n{ image: base64, mimeType }
+    Browser->>API: POST /api/parse-screenshot with image
     API->>API: Verify auth session
-    API->>Anthropic: POST /v1/messages\n{ image, extraction prompt }\nx-api-key: process.env
-
-    Anthropic-->>API: { guest, checkin, checkout,\nguests, source, gross,\ncomm, booking_number, special }
-
+    API->>Anthropic: POST /v1/messages with image and prompt
+    Note over API,Anthropic: API key stays server-side only
+    Anthropic-->>API: guest, dates, price, commission, source
     API-->>Browser: Extracted booking fields
-
     Browser->>Browser: Auto-fill form fields
-    Browser->>Browser: Show thumbnail + summary
-    Browser->>Browser: Hide spinner
-
+    Browser->>Browser: Show thumbnail and summary
     Staff->>Browser: Select room (only manual step)
-    Staff->>Browser: Verify & click "Save Booking"
-
-    Browser->>Supabase: INSERT INTO bookings (...)
-    Supabase-->>Browser: Saved ✓
-    Browser->>Browser: Close modal, re-render
+    Staff->>Browser: Verify and click Save Booking
+    Browser->>Supabase: INSERT new booking
+    Supabase-->>Browser: Saved
+    Browser->>Browser: Close modal and re-render
 ```
 
 ### 4. Inline Clean Status Update
@@ -359,17 +347,13 @@ sequenceDiagram
     participant Supabase as Supabase DB
 
     Staff->>Browser: Open Cleaning Plan tab
-    Browser->>Supabase: SELECT * FROM bookings WHERE status IN (...)
-    Supabase-->>Browser: Active bookings
-
+    Browser->>Supabase: Fetch active bookings
+    Supabase-->>Browser: Active bookings list
     Browser->>Browser: Render table with inline dropdowns
-
-    Staff->>Browser: Change clean status dropdown\n(e.g. "Needs Cleaning" → "In Progress")
-
-    Browser->>Supabase: UPDATE bookings\nSET clean_status = '🟡 In Progress'\nWHERE id = ?
-    Supabase-->>Browser: Updated ✓
-
-    Browser->>Browser: Re-render cleaning table row
+    Staff->>Browser: Change clean status in dropdown
+    Browser->>Supabase: UPDATE booking clean_status by id
+    Supabase-->>Browser: Updated
+    Browser->>Browser: Re-render that table row
 ```
 
 ### 5. Vercel Deployment
@@ -399,83 +383,61 @@ sequenceDiagram
 ### Journey 1 — Owner: Morning Review
 
 ```mermaid
-journey
-    title Owner Morning Review
-    section Open App
-      Visit app URL on phone: 5: Owner
-      Login with email + password: 4: Owner
-      Land on Dashboard: 5: Owner
-    section Check Today
-      See metric cards (occupancy, check-ins): 5: Owner
-      Review who is checking in today: 5: Owner
-      Review who is checking out today: 5: Owner
-    section Financials
-      Check gross revenue for active bookings: 4: Owner
-      Check net income after commission: 4: Owner
-    section Plan the Day
-      Open Cleaning Plan tab: 5: Owner
-      See which rooms need cleaning: 5: Owner
-      Check staff shifts for today: 4: Owner
+flowchart TD
+    A([Open app on phone]) --> B([Login with email and password])
+    B --> C([Land on Dashboard])
+    C --> D([Check metric cards: occupancy, check-ins, checkouts])
+    D --> E([Review who is checking in today])
+    E --> F([Review who is checking out today])
+    F --> G([Check gross revenue and net income])
+    G --> H([Open Cleaning Plan tab])
+    H --> I([See which rooms need cleaning])
+    I --> J([Check staff shifts for today])
 ```
 
 ### Journey 2 — Staff: Add a New Booking from OTA Screenshot
 
 ```mermaid
-journey
-    title Staff Adding Booking via Screenshot
-    section Receive Booking
-      Get notification from Booking.com: 5: Staff
-      Take screenshot of booking details: 4: Staff
-    section Open App
-      Open hotel app on phone: 5: Staff
-      Click + New Booking: 5: Staff
-    section Upload Screenshot
-      Drop screenshot into upload zone: 4: Staff
-      Wait for AI to extract details: 3: Staff
-      Review auto-filled form fields: 5: Staff
-    section Complete Booking
-      Select the correct room: 5: Staff
-      Verify dates and price: 4: Staff
-      Click Save Booking: 5: Staff
-      See booking appear in list: 5: Staff
+flowchart TD
+    A([Receive booking notification from OTA]) --> B([Take screenshot of booking details])
+    B --> C([Open hotel app on phone])
+    C --> D([Click New Booking])
+    D --> E([Drop screenshot into upload zone])
+    E --> F([AI extracts guest name, dates, price])
+    F --> G([Review auto-filled form fields])
+    G --> H([Select the correct room])
+    H --> I([Verify details and click Save])
+    I --> J([Booking appears in the list])
 ```
 
 ### Journey 3 — Housekeeping: Cleaning Workflow
 
 ```mermaid
-journey
-    title Housekeeping Morning Workflow
-    section Start Shift
-      Open app on phone: 5: Housekeeper
-      Go to Cleaning Plan tab: 5: Housekeeper
-      Filter by "Checkout today": 5: Housekeeper
-    section Clean Rooms
-      See list of rooms to clean: 5: Housekeeper
-      Change status to "In Progress": 4: Housekeeper
-      Clean the room: 5: Housekeeper
-      Change status to "Clean": 5: Housekeeper
-    section Check-ins Ready
-      Filter by "Check-in today": 5: Housekeeper
-      Confirm all rooms are marked Clean: 5: Housekeeper
+flowchart TD
+    A([Open app on phone]) --> B([Go to Cleaning Plan tab])
+    B --> C([Filter by Checkout today])
+    C --> D([See list of rooms to clean])
+    D --> E([Change room status to In Progress])
+    E --> F([Clean the room physically])
+    F --> G([Change room status to Clean])
+    G --> H{More rooms to clean?}
+    H -->|Yes| D
+    H -->|No| I([Filter by Check-in today])
+    I --> J([Confirm all check-in rooms are marked Clean])
 ```
 
 ### Journey 4 — Owner: Monthly Reporting
 
 ```mermaid
-journey
-    title Owner Monthly Summary Review
-    section Open Monthly Tab
-      Navigate to Monthly Summary: 5: Owner
-      See occupancy % for each month: 5: Owner
-    section Review Income
-      Check gross room revenue: 5: Owner
-      Check OTA commissions deducted: 4: Owner
-      Check net room income: 5: Owner
-    section Other Income
-      Enter cafe income for the month: 4: Owner
-      Enter Grab + LINE MAN income: 4: Owner
-      Enter cooking class income: 4: Owner
-      See total monthly income auto-calculated: 5: Owner
+flowchart TD
+    A([Open Monthly Summary tab]) --> B([See occupancy % for each month])
+    B --> C([Check gross room revenue])
+    C --> D([Check OTA commissions deducted])
+    D --> E([Check net room income])
+    E --> F([Enter cafe income for the month])
+    F --> G([Enter Grab and LINE MAN income])
+    G --> H([Enter cooking class and vehicle income])
+    H --> I([Total monthly income auto-calculated])
 ```
 
 ---
