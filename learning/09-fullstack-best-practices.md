@@ -1,4 +1,4 @@
-# Full Stack Best Practices — Easy Rules for a Better App
+# Full Stack Best Practices - Easy Rules for a Better App
 
 ## What is a Full Stack Application?
 
@@ -24,26 +24,26 @@ Best practices are habits that make your app more reliable, secure, and easier t
 
 ---
 
-## Practice 1 — Never Trust User Input
+## Practice 1 - Never Trust User Input
 
 **Rule:** Always validate data before saving it to the database. Users (and bugs) can send unexpected values.
 
 ```typescript
-// Bad — saving whatever the user typed
+// Bad - saving whatever the user typed
 await supabase.from('bookings').insert({ nights: userInput.nights });
 
-// Good — validate first
+// Good - validate first
 const nights = calcNights(checkin, checkout);  // always calculate, never trust
 if (nights < 1) throw new Error("Invalid dates");
 await supabase.from('bookings').insert({ nights });
 ```
 
 From your `CLAUDE.md`:
-> "Always calculate `nights` and `net_income` in code — never trust user input for these fields"
+> "Always calculate `nights` and `net_income` in code - never trust user input for these fields"
 
 ---
 
-## Practice 2 — Keep Secrets Out of Code
+## Practice 2 - Keep Secrets Out of Code
 
 ```mermaid
 flowchart TD
@@ -59,16 +59,16 @@ flowchart TD
 
 - API keys, database passwords, and service role keys go in `.env.local`
 - `.env.local` is in `.gitignore`
-- Check `git status` before every commit — make sure `.env.local` is not in the list
+- Check `git status` before every commit - make sure `.env.local` is not in the list
 
 ---
 
-## Practice 3 — Calculate Derived Values in Code, Not the Form
+## Practice 3 - Calculate Derived Values in Code, Not the Form
 
-Some values should never be entered manually — they should always be calculated:
+Some values should never be entered manually - they should always be calculated:
 
 ```typescript
-// From your project — derived values
+// From your project - derived values
 const nights = calcNights(checkin, checkout);    // calculated, not entered
 const netIncome = gross - comm;                  // calculated, not entered
 const roomType = ROOM_TYPES[room];               // derived from room name, not entered
@@ -78,7 +78,7 @@ This prevents inconsistencies. If a user types "3 nights" but the dates say 4 da
 
 ---
 
-## Practice 4 — Use Consistent Naming Conventions
+## Practice 4 - Use Consistent Naming Conventions
 
 Mixing naming styles makes code confusing and causes bugs.
 
@@ -110,12 +110,12 @@ Your project follows: `snake_case` in the database, `camelCase` in TypeScript, `
 
 ---
 
-## Practice 5 — Write Small, Focused Functions
+## Practice 5 - Write Small, Focused Functions
 
 Each function should do **one thing**. This makes code easier to test, debug, and reuse.
 
 ```typescript
-// Bad — one giant function
+// Bad - one giant function
 function handleSave() {
   // 1. Validate dates
   // 2. Calculate nights
@@ -129,7 +129,7 @@ function handleSave() {
   // (100 lines of mixed logic)
 }
 
-// Good — small functions with single responsibilities
+// Good - small functions with single responsibilities
 function validateDates(checkin: string, checkout: string): boolean { ... }
 function buildBookingPayload(form: FormValues): Booking { ... }
 async function saveBooking(booking: Booking): Promise<void> { ... }
@@ -144,9 +144,9 @@ function handleSave() {
 
 ---
 
-## Practice 6 — Handle Loading and Error States
+## Practice 6 - Handle Loading and Error States
 
-Your app fetches data from Supabase — this takes time. Always show something while waiting.
+Your app fetches data from Supabase - this takes time. Always show something while waiting.
 
 ```typescript
 // Three states every data-fetching component should handle
@@ -171,17 +171,17 @@ stateDiagram-v2
 
 ---
 
-## Practice 7 — Use TypeScript Types for Everything
+## Practice 7 - Use TypeScript Types for Everything
 
 Types catch bugs before your code even runs.
 
 ```typescript
-// Without types — bug-prone
+// Without types - bug-prone
 function formatMoney(amount) {
   return `฿${amount.toFixed(0)}`;  // crashes if amount is a string
 }
 
-// With types — safe
+// With types - safe
 function formatMoney(amount: number): string {
   return `฿${amount.toFixed(0)}`;  // TypeScript will warn if you pass a string
 }
@@ -192,7 +192,7 @@ function saveBooking(booking: Booking): Promise<void> { ... }
 
 ---
 
-## Practice 8 — Keep Your Data Model Clean
+## Practice 8 - Keep Your Data Model Clean
 
 From the first day, design your data to be consistent:
 - Dates always as `YYYY-MM-DD` strings (never `DD/MM/YYYY` or `MM-DD-YYYY`)
@@ -200,16 +200,16 @@ From the first day, design your data to be consistent:
 - Status values from a fixed list (not freeform text)
 
 ```typescript
-// Good — fixed status values defined once
+// Good - fixed status values defined once
 type BookingStatus = 'Upcoming' | 'Check-in' | 'Occupied' | 'Checkout' | 'Completed';
 
-// Bad — freeform status anyone can type
+// Bad - freeform status anyone can type
 type BookingStatus = string;  // could be "upcoming", "UPCOMING", "Upoming" (typo)
 ```
 
 ---
 
-## Practice 9 — Build, Then Deploy Early
+## Practice 9 - Build, Then Deploy Early
 
 Do not wait until the app is "finished" to deploy. Deploy a skeleton on day one.
 
@@ -231,7 +231,7 @@ Deploying early means:
 
 ---
 
-## Practice 10 — Commit Often With Clear Messages
+## Practice 10 - Commit Often With Clear Messages
 
 ```mermaid
 gitGraph
@@ -252,7 +252,7 @@ Committing often means:
 
 ---
 
-## Practice 11 — Never Expose the Service Role Key
+## Practice 11 - Never Expose the Service Role Key
 
 This deserves its own rule because the consequences are severe:
 

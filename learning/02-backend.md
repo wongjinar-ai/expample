@@ -1,8 +1,8 @@
-# Backend Development — What It Is & How It Works
+# Backend Development - What It Is & How It Works
 
 ## What is the Backend?
 
-The **backend** is the part of a web application that runs on a server — hidden from users. It handles storing data, checking passwords, running business logic, and talking to other services.
+The **backend** is the part of a web application that runs on a server - hidden from users. It handles storing data, checking passwords, running business logic, and talking to other services.
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,7 @@ The user never touches the database directly. The backend sits in the middle, ac
 
 ---
 
-## Frontend vs Backend — Side by Side
+## Frontend vs Backend - Side by Side
 
 | | Frontend | Backend |
 |--|----------|---------|
@@ -72,7 +72,7 @@ Example API endpoints for your app:
 | PATCH | `/api/bookings/42` | Update booking #42 |
 | DELETE | `/api/bookings/42` | Delete booking #42 |
 
-The response comes back as **JSON** — a standard text format for data:
+The response comes back as **JSON** - a standard text format for data:
 
 ```json
 {
@@ -172,7 +172,7 @@ In your app, **RLS** is a database-level security rule. Even if someone somehow 
 flowchart TD
     Request[Request to database] --> Check{Is user authenticated?}
     Check -->|Yes| Allow[Allow read/write]
-    Check -->|No| Deny[Deny — return nothing]
+    Check -->|No| Deny[Deny - return nothing]
 ```
 
 The rule in SQL looks like this:
@@ -185,7 +185,7 @@ This means: only logged-in users can touch the bookings table.
 
 ---
 
-## Summary — Backend at a Glance
+## Summary - Backend at a Glance
 
 ```mermaid
 flowchart TB
@@ -201,4 +201,4 @@ flowchart TB
     NextAPI -->|"JSON response"| Browser
 ```
 
-The backend is invisible to your staff, but it is doing all the hard work — saving bookings, checking logins, calculating totals, and keeping the data safe.
+The backend is invisible to your staff, but it is doing all the hard work - saving bookings, checking logins, calculating totals, and keeping the data safe.

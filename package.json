@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "playwright test --headed",
-    "test:m1": "playwright test tests/m1-auth.spec.ts --headed"
+    "test:m1": "playwright test tests/m1-auth.spec.ts --headed",
+    "test:m2": "playwright test tests/m2-bookings.spec.ts --headed"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

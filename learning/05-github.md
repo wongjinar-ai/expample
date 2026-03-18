@@ -1,10 +1,10 @@
-# GitHub — Version Control for Beginners
+# GitHub - Version Control for Beginners
 
 ## What is GitHub?
 
 **Git** is a tool that tracks every change you make to your code. Think of it like "Track Changes" in Microsoft Word, but for entire folders of code.
 
-**GitHub** is a website that stores your Git history online — so your code is backed up, shareable, and can trigger other services (like Vercel deployments).
+**GitHub** is a website that stores your Git history online - so your code is backed up, shareable, and can trigger other services (like Vercel deployments).
 
 ```mermaid
 flowchart LR
@@ -138,9 +138,9 @@ For a solo project like yours, working directly on `main` is perfectly fine. Bra
 A `.gitignore` file tells Git which files to **never track**. Your project already has one.
 
 Things that should NEVER go to GitHub:
-- `.env.local` — contains secret keys (your Supabase passwords)
-- `node_modules/` — thousands of files auto-installed by npm
-- `.next/` — the compiled build output (can always be rebuilt)
+- `.env.local` - contains secret keys (your Supabase passwords)
+- `node_modules/` - thousands of files auto-installed by npm
+- `.next/` - the compiled build output (can always be rebuilt)
 
 ```
 # .gitignore
@@ -150,7 +150,7 @@ node_modules/
 .next/
 ```
 
-If you accidentally commit a secret key, you must rotate (regenerate) it immediately — deleting it from the repo is not enough, because GitHub keeps the full history.
+If you accidentally commit a secret key, you must rotate (regenerate) it immediately - deleting it from the repo is not enough, because GitHub keeps the full history.
 
 ---
 
@@ -198,11 +198,11 @@ Each line = one commit. The short code on the left (`cae45f9`) is the commit ID.
 | I want to undo my last commit (keep the changes) | `git reset HEAD~1` | Uncommit but keep edits |
 | I want to see what changed | `git diff` | Show all unstaged changes |
 
-**Important:** Never use `git reset --hard` unless you are sure — it deletes your work permanently.
+**Important:** Never use `git reset --hard` unless you are sure - it deletes your work permanently.
 
 ---
 
-## Summary — Git Commands Cheat Sheet
+## Summary - Git Commands Cheat Sheet
 
 ```bash
 # Check what's changed

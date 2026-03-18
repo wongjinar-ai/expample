@@ -1,4 +1,4 @@
-# General Software Development — Core Concepts for Beginners
+# General Software Development - Core Concepts for Beginners
 
 ## What is Software Development?
 
@@ -6,18 +6,18 @@ Software development is the process of turning an idea into a working program. I
 
 ```mermaid
 flowchart LR
-    Idea["💡 Idea"] --> Plan["📝 Plan"]
-    Plan --> Code["💻 Write Code"]
-    Code --> Test["🧪 Test"]
+    Idea[Idea] --> Plan[Plan]
+    Plan --> Code[Write Code]
+    Code --> Test[Test]
     Test --> Bug{Bugs found?}
-    Bug -->|Yes| Fix["🔧 Fix"]
+    Bug -->|Yes| Fix[Fix]
     Fix --> Test
-    Bug -->|No| Ship["🚀 Ship to users"]
-    Ship --> Feedback["📣 User feedback"]
+    Bug -->|No| Ship[Ship to users]
+    Ship --> Feedback[User feedback]
     Feedback --> Plan
 ```
 
-Software is never truly "finished" — you build, ship, get feedback, and improve.
+Software is never truly "finished" - you build, ship, get feedback, and improve.
 
 ---
 
@@ -42,7 +42,7 @@ flowchart LR
 
 ---
 
-## Variables — Storing Information
+## Variables - Storing Information
 
 A variable is a named container that holds a value.
 
@@ -69,7 +69,7 @@ let booking = {
 
 ---
 
-## Functions — Reusable Actions
+## Functions - Reusable Actions
 
 A function is a named block of code you can run (call) whenever you need it.
 
@@ -91,7 +91,7 @@ Your project uses functions like `calcNights`, `fmtDate`, and `fmtMoney` in `src
 
 ---
 
-## Conditions — Making Decisions
+## Conditions - Making Decisions
 
 Code can choose different paths based on a condition.
 
@@ -117,7 +117,7 @@ flowchart TD
 
 ---
 
-## Loops — Doing Things Repeatedly
+## Loops - Doing Things Repeatedly
 
 When you have a list and want to do something for each item:
 
@@ -138,7 +138,7 @@ const roomLabels = rooms.map((room) => `Room: ${room}`);
 
 ## Errors & Debugging
 
-Bugs are mistakes in code. Every developer has bugs — the skill is finding and fixing them.
+Bugs are mistakes in code. Every developer has bugs - the skill is finding and fixing them.
 
 ```mermaid
 flowchart TD
@@ -159,9 +159,9 @@ flowchart TD
 | **Logic error** | Code runs but gives wrong answer | Subtracting instead of adding |
 
 **Tools for debugging:**
-- `console.log(value)` — print values to the terminal to see what they are
+- `console.log(value)` - print values to the terminal to see what they are
 - Your editor (VS Code) highlights many errors before you even run code
-- Browser DevTools — press F12 to see errors in the browser
+- Browser DevTools - press F12 to see errors in the browser
 
 ---
 
@@ -175,9 +175,9 @@ TypeError: Cannot read properties of undefined (reading 'guest')
 ```
 
 Reading it:
-1. **TypeError** — the type of error
-2. **Cannot read properties of undefined** — you tried to access `.guest` but the object was `undefined` (didn't exist yet)
-3. **BookingModal.tsx:45** — file name and line number where it happened
+1. **TypeError** - the type of error
+2. **Cannot read properties of undefined** - you tried to access `.guest` but the object was `undefined` (didn't exist yet)
+3. **BookingModal.tsx:45** - file name and line number where it happened
 
 Go to line 45, check if the booking object could be undefined before that point.
 
@@ -185,7 +185,7 @@ Go to line 45, check if the booking object could be undefined before that point.
 
 ## Code Quality Basics
 
-Good code is easy to read and understand later — by you, or by someone else.
+Good code is easy to read and understand later - by you, or by someone else.
 
 **Use meaningful names:**
 ```typescript
@@ -198,12 +198,12 @@ const nights = checkout - checkin;
 
 **Keep functions small and focused:**
 ```typescript
-// Bad — one function does everything
+// Bad - one function does everything
 function saveBooking() {
   // 200 lines of validation + calculation + network call
 }
 
-// Good — split into focused functions
+// Good - split into focused functions
 function validateBooking(booking) { ... }
 function calculateDerivedFields(booking) { ... }
 function insertToDatabase(booking) { ... }
@@ -211,12 +211,12 @@ function insertToDatabase(booking) { ... }
 
 **Don't repeat yourself (DRY):**
 ```typescript
-// Bad — same logic in three places
+// Bad - same logic in three places
 if (nights < 1) return "error";
 // ... 50 lines later ...
 if (nights < 1) return "error";
 
-// Good — one function, called wherever needed
+// Good - one function, called wherever needed
 function isValidNights(nights: number): boolean {
   return nights >= 1;
 }

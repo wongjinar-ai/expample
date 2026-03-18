@@ -1,4 +1,4 @@
-# Project Management for Software Projects — A Beginner's Guide
+# Project Management for Software Projects - A Beginner's Guide
 
 ## What is Project Management?
 
@@ -35,11 +35,11 @@ Your `PLANNING.md` already follows this pattern with milestones M0 → M5.
 
 | Term | What it means | Example |
 |------|--------------|---------|
-| **Milestone** | A meaningful checkpoint — a phase of work | M2: Core Booking Features |
+| **Milestone** | A meaningful checkpoint - a phase of work | M2: Core Booking Features |
 | **Task** | A single concrete action | "Build the + New Booking modal" |
 | **Done condition** | How you know a milestone is complete | "Staff can create and edit bookings" |
 
-A milestone is done only when its done condition is met — not just when you think you finished.
+A milestone is done only when its done condition is met - not just when you think you finished.
 
 ---
 
@@ -65,7 +65,7 @@ If a task still feels too big, break it down further. "Build the table" → "wri
 
 ```mermaid
 gantt
-    title Himmapun Retreat — Build Order
+    title Himmapun Retreat - Build Order
     dateFormat YYYY-MM-DD
     section M0 Setup
         Infrastructure & accounts  :done, m0, 2026-03-18, 3d
@@ -107,9 +107,9 @@ You do not need complex tools. A simple list works perfectly for a solo or small
 - [ ] M1.2 Configure Tailwind
 ```
 
-**Option 2: GitHub Issues** — each task is a "ticket" you can close when done
+**Option 2: GitHub Issues** - each task is a "ticket" you can close when done
 
-**Option 3: A notebook** — old fashioned but it works
+**Option 3: A notebook** - old fashioned but it works
 
 ---
 
@@ -125,14 +125,14 @@ flowchart TD
     StillStuck -->|Yes| Smaller[Break the task into smaller steps]
     Smaller --> Search[Search for the specific error message]
     Search --> Ask[Ask for help Claude Code Stack Overflow documentation]
-    Ask --> Unblocked[Unblocked — continue]
+    Ask --> Unblocked[Unblocked - continue]
 ```
 
 The most important thing: if you are stuck, **be specific** about what you tried and what error you got. "It doesn't work" is hard to help with. "I get this error on line 42" is easy.
 
 ---
 
-## Scope Creep — The Silent Project Killer
+## Scope Creep - The Silent Project Killer
 
 **Scope creep** is when you keep adding new features while the original features are not done yet.
 
@@ -158,7 +158,7 @@ For Himmapun Retreat:
 
 | Feature | MVP? | Why |
 |---------|------|-----|
-| Login | Yes | Security — must have |
+| Login | Yes | Security - must have |
 | Create/view bookings | Yes | Core purpose |
 | Dashboard occupancy | Yes | Key daily view |
 | Cleaning plan | Yes | Daily operations |
@@ -173,9 +173,9 @@ Build and ship the MVP first. Then add more features.
 ## Communication
 
 Even if you are building alone, write things down:
-- **PLANNING.md** — decisions and architecture
-- **CLAUDE.md** — rules and conventions for the codebase
-- **Commit messages** — what you changed and why
+- **PLANNING.md** - decisions and architecture
+- **CLAUDE.md** - rules and conventions for the codebase
+- **Commit messages** - what you changed and why
 
 Future you (or a future collaborator) will thank you for the documentation.
 

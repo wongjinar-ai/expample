@@ -1,8 +1,8 @@
-# Playwright — Automated Testing for Beginners
+# Playwright - Automated Testing for Beginners
 
 ## What is Playwright?
 
-**Playwright** is a tool that controls a real browser automatically — it clicks buttons, fills in forms, and checks that things appear on screen, just like a real user would. But it does this in milliseconds, and you can run it hundreds of times without any manual effort.
+**Playwright** is a tool that controls a real browser automatically - it clicks buttons, fills in forms, and checks that things appear on screen, just like a real user would. But it does this in milliseconds, and you can run it hundreds of times without any manual effort.
 
 Think of it as a robot that tests your app for you.
 
@@ -26,8 +26,8 @@ Without tests, every time you change something in your app you have to manually 
 ```mermaid
 flowchart TD
     Change[You change some code]
-    Manual[Without tests: click through the whole app manually]
-    Auto[With Playwright: run one command]
+    Manual[Without tests - click through the whole app manually]
+    Auto[With Playwright - run one command]
     Manual --> Time[Takes 20+ minutes, easy to miss things]
     Auto --> Fast[Takes 30 seconds, catches everything]
 ```
@@ -97,7 +97,7 @@ tests/
 └── dashboard.spec.ts
 ```
 
-Here is the simplest possible test — check that the login page loads:
+Here is the simplest possible test - check that the login page loads:
 
 ```typescript
 // tests/login.spec.ts
@@ -135,18 +135,18 @@ flowchart TD
 In code:
 ```typescript
 test('staff can create a booking', async ({ page }) => {
-  // ARRANGE — navigate to the bookings page
+  // ARRANGE - navigate to the bookings page
   await page.goto('/bookings');
 
-  // ACT — click the New Booking button
+  // ACT - click the New Booking button
   await page.getByRole('button', { name: 'New Booking' }).click();
 
-  // ACT — fill in the form
+  // ACT - fill in the form
   await page.getByLabel('Guest Name').fill('Somchai Wongsa');
   await page.getByLabel('Check-in').fill('2026-04-01');
   await page.getByLabel('Check-out').fill('2026-04-03');
 
-  // ASSERT — verify the booking appears in the list
+  // ASSERT - verify the booking appears in the list
   await expect(page.getByText('Somchai Wongsa')).toBeVisible();
 });
 ```
@@ -214,7 +214,7 @@ test('unauthenticated user is redirected to login', async ({ page }) => {
 Logging in before every single test is slow. Playwright lets you save the login session and reuse it.
 
 ```typescript
-// tests/auth.setup.ts — runs once, saves session
+// tests/auth.setup.ts - runs once, saves session
 import { test as setup } from '@playwright/test';
 
 setup('log in as staff', async ({ page }) => {
@@ -224,13 +224,13 @@ setup('log in as staff', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign In' }).click();
   await page.waitForURL('/dashboard');
 
-  // Save the session to disk — reused by all other tests
+  // Save the session to disk - reused by all other tests
   await page.context().storageState({ path: 'tests/.auth/staff.json' });
 });
 ```
 
 ```typescript
-// playwright.config.ts — configure session reuse
+// playwright.config.ts - configure session reuse
 export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
@@ -246,7 +246,7 @@ export default defineConfig({
 });
 ```
 
-Now every test starts already logged in — much faster.
+Now every test starts already logged in - much faster.
 
 ---
 
@@ -274,7 +274,7 @@ test('dashboard shows the weekly grid', async ({ page }) => {
 
 ---
 
-## Running Tests — Commands Cheat Sheet
+## Running Tests - Commands Cheat Sheet
 
 ```bash
 # Run all tests
@@ -310,7 +310,7 @@ Running 6 tests using 1 worker
   3 passed, 1 failed (8.3s)
 ```
 
-A `✗` means the test found a bug. Playwright also saves screenshots and a trace of what the browser did — open the report with `npx playwright show-report` to see exactly where it failed.
+A `✗` means the test found a bug. Playwright also saves screenshots and a trace of what the browser did - open the report with `npx playwright show-report` to see exactly where it failed.
 
 ---
 
@@ -320,10 +320,10 @@ A `✗` means the test found a bug. Playwright also saves screenshots and a trac
 flowchart TD
     Feature[You build a new feature]
     WriteTest[Write a test for it]
-    RunDev[Start dev server: npm run dev]
-    RunTest[Run: npx playwright test]
+    RunDev[Start the dev server]
+    RunTest[Run the Playwright tests]
     Pass{All tests pass?}
-    Debug[Open report: npx playwright show-report]
+    Debug[Open the Playwright report]
     FindBug[Find what failed and fix it]
     Push[git push - Vercel deploys]
 
@@ -342,8 +342,8 @@ flowchart TD
 |---------|--------------|
 | Test | A script that acts like a user and checks the result |
 | Assertion | A check that something is true |
-| Pass | The assertion is true — feature works |
-| Fail | The assertion is false — something is broken |
+| Pass | The assertion is true - feature works |
+| Fail | The assertion is false - something is broken |
 | Headless | Browser runs invisibly in the background |
 | Storage state | Saved login session reused across tests |
 

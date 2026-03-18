@@ -1,8 +1,8 @@
-# Frontend Development — What It Is & How It Works
+# Frontend Development - What It Is & How It Works
 
 ## What is the Frontend?
 
-The **frontend** is everything a user sees and interacts with in their browser or on their phone screen. When you open the Himmapun Retreat app and see the dashboard, the room grid, or the booking modal — that is all frontend.
+The **frontend** is everything a user sees and interacts with in their browser or on their phone screen. When you open the Himmapun Retreat app and see the dashboard, the room grid, or the booking modal - that is all frontend.
 
 Think of it like this:
 - **Frontend** = the shop window and the inside of the store
@@ -16,9 +16,9 @@ Think of it like this:
 flowchart TD
     A[User types a URL in browser] --> B[Browser sends a request]
     B --> C[Server sends back HTML, CSS, JavaScript]
-    C --> D[Browser reads the HTML — the skeleton]
-    D --> E[Browser applies CSS — the styling]
-    E --> F[Browser runs JavaScript — the behaviour]
+    C --> D[Browser reads the HTML - the skeleton]
+    D --> E[Browser applies CSS - the styling]
+    E --> F[Browser runs JavaScript - the behaviour]
     F --> G[User sees the finished page]
     G --> H[User clicks something]
     H --> I[JavaScript reacts and updates the page]
@@ -28,15 +28,15 @@ The three building blocks of every webpage:
 
 | Language | Role | Analogy |
 |----------|------|---------|
-| **HTML** | Structure — what elements exist | The bones of a house |
-| **CSS** | Styling — how things look | The paint and furniture |
-| **JavaScript** | Behaviour — what happens when you interact | The electricity and plumbing |
+| **HTML** | Structure - what elements exist | The bones of a house |
+| **CSS** | Styling - how things look | The paint and furniture |
+| **JavaScript** | Behaviour - what happens when you interact | The electricity and plumbing |
 
 ---
 
 ## What is React?
 
-React is a JavaScript **library** that makes building complex UIs much easier. Instead of writing raw HTML that you update manually, you write **components** — reusable building blocks.
+React is a JavaScript **library** that makes building complex UIs much easier. Instead of writing raw HTML that you update manually, you write **components** - reusable building blocks.
 
 ```mermaid
 flowchart TD
@@ -53,7 +53,7 @@ flowchart TD
     MetricCards --> Card3[Gross Income Card]
 ```
 
-Each box above is a **component** — a small, reusable piece of UI. This is exactly how your Himmapun app is built.
+Each box above is a **component** - a small, reusable piece of UI. This is exactly how your Himmapun app is built.
 
 ---
 
@@ -84,7 +84,7 @@ src/app/
     └── page.tsx      → yourapp.com/login
 ```
 
-No extra configuration needed — just create a folder with a `page.tsx` file inside.
+No extra configuration needed - just create a folder with a `page.tsx` file inside.
 
 ---
 
@@ -111,7 +111,7 @@ TailwindCSS lets you style things by adding short class names directly in your H
 <button class="bg-accent text-black px-4 py-2 rounded-md">Save</button>
 ```
 
-The classes are tiny utilities — `bg-` means background, `px-` means horizontal padding, `rounded-` means border radius.
+The classes are tiny utilities - `bg-` means background, `px-` means horizontal padding, `rounded-` means border radius.
 
 ---
 
@@ -123,7 +123,7 @@ When a React component loads on screen, it goes through a simple lifecycle:
 stateDiagram-v2
     [*] --> Mounting: Component appears on screen
     Mounting --> Rendered: Browser shows the component
-    Rendered --> DataFetching: useEffect runs — fetch data from Supabase
+    Rendered --> DataFetching: useEffect runs - fetch data from Supabase
     DataFetching --> Updated: Data arrives, state updates
     Updated --> Rendered: Component re-renders with new data
     Rendered --> Unmounting: User navigates away
@@ -139,14 +139,14 @@ In your project, every page does this:
 
 ## What is TypeScript?
 
-TypeScript is JavaScript with **types**. Types tell you what kind of data a variable holds — and catch mistakes before the code even runs.
+TypeScript is JavaScript with **types**. Types tell you what kind of data a variable holds - and catch mistakes before the code even runs.
 
 ```typescript
-// JavaScript — no safety net
+// JavaScript - no safety net
 let guests = "two";  // Bug: this should be a number
 let total = guests * 500;  // Crashes at runtime
 
-// TypeScript — caught immediately
+// TypeScript - caught immediately
 let guests: number = "two";  // Error shown in your editor instantly
 ```
 
@@ -170,7 +170,7 @@ If you accidentally set `gross = "five hundred"`, TypeScript will warn you befor
 
 | File | What it does |
 |------|-------------|
-| `src/app/layout.tsx` | Wraps every page — fonts, sidebar, topbar |
+| `src/app/layout.tsx` | Wraps every page - fonts, sidebar, topbar |
 | `src/app/dashboard/page.tsx` | The main dashboard page |
 | `src/components/bookings/BookingModal.tsx` | The form for adding/editing bookings |
 | `src/lib/helpers.ts` | Small helper functions (format dates, calculate nights) |

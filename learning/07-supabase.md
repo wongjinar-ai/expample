@@ -1,4 +1,4 @@
-# Supabase — Database & Authentication for Beginners
+# Supabase - Database & Authentication for Beginners
 
 ## What is Supabase?
 
@@ -28,7 +28,7 @@ flowchart TD
 
 ## What is PostgreSQL?
 
-PostgreSQL (often called "Postgres") is a **relational database**. Data is stored in tables — exactly like a spreadsheet, but designed for computers to read and write millions of rows very fast.
+PostgreSQL (often called "Postgres") is a **relational database**. Data is stored in tables - exactly like a spreadsheet, but designed for computers to read and write millions of rows very fast.
 
 Your `bookings` table looks like this:
 
@@ -42,7 +42,7 @@ Every **row** is one record (one booking). Every **column** is one field (guest 
 
 ---
 
-## SQL — The Language of Databases
+## SQL - The Language of Databases
 
 SQL (Structured Query Language) is how you talk to a database.
 
@@ -73,7 +73,7 @@ WHERE id = 1;
 DELETE FROM bookings WHERE id = 1;
 ```
 
-**In your Next.js app**, you use the Supabase JavaScript client instead of writing raw SQL — but the client translates your code into SQL behind the scenes.
+**In your Next.js app**, you use the Supabase JavaScript client instead of writing raw SQL - but the client translates your code into SQL behind the scenes.
 
 ---
 
@@ -111,7 +111,7 @@ The `.from()` → `.select()` → `.eq()` chain is much easier to read than raw 
 
 ## Supabase Auth
 
-Supabase Auth handles user registration, login, session tokens, and password resets — all securely.
+Supabase Auth handles user registration, login, session tokens, and password resets - all securely.
 
 ```mermaid
 sequenceDiagram
@@ -125,13 +125,13 @@ sequenceDiagram
     SupaAuth-->>App: Return session (JWT token)
     App-->>Staff: Redirect to dashboard
 
-    Note over App,SupaAuth: Later — check if still logged in
+    Note over App,SupaAuth: Later - check if still logged in
 
     App->>SupaAuth: supabase.auth.getUser()
     SupaAuth-->>App: Return user object (or null if logged out)
 ```
 
-You do not build this yourself — Supabase handles the password hashing, session management, and token security.
+You do not build this yourself - Supabase handles the password hashing, session management, and token security.
 
 ---
 
@@ -143,8 +143,8 @@ RLS is a set of rules that live **inside the database**. Even if someone bypasse
 flowchart TD
     Request[Someone tries to read bookings]
     Request --> Check{Is auth.role authenticated?}
-    Check -->|Yes — logged in user| Allow[Return the data]
-    Check -->|No — not logged in| Deny[Return nothing — access denied]
+    Check -->|Yes - logged in user| Allow[Return the data]
+    Check -->|No - not logged in| Deny[Return nothing - access denied]
 ```
 
 In SQL:
@@ -159,11 +159,11 @@ FOR ALL
 USING (auth.role() = 'authenticated');
 ```
 
-Once this policy is in place, anonymous requests (from someone not logged in) will always get back an empty result — not an error, just nothing.
+Once this policy is in place, anonymous requests (from someone not logged in) will always get back an empty result - not an error, just nothing.
 
 ---
 
-## Two API Keys — Understanding the Difference
+## Two API Keys - Understanding the Difference
 
 Supabase gives you two keys. They are very different:
 
@@ -180,7 +180,7 @@ flowchart TD
 | Key | Who uses it | What it can do | Where it lives |
 |-----|------------|----------------|----------------|
 | `anon` key | Your app in the browser | Read/write only if RLS allows | `.env.local` + Vercel |
-| `service_role` key | Your `/new-booking` command | Bypass RLS — do anything | `.env.local` ONLY |
+| `service_role` key | Your `/new-booking` command | Bypass RLS - do anything | `.env.local` ONLY |
 
 The `service_role` key is like a master key. Never commit it to GitHub. Never add it to Vercel.
 
@@ -214,13 +214,13 @@ mindmap
       Debug errors
 ```
 
-You can edit data directly in the Table Editor — useful for fixing mistakes without writing code.
+You can edit data directly in the Table Editor - useful for fixing mistakes without writing code.
 
 ---
 
 ## Data Types in Postgres
 
-When you create a table, each column has a **type** — what kind of data it holds:
+When you create a table, each column has a **type** - what kind of data it holds:
 
 | Type | Example | Used for |
 |------|---------|----------|
@@ -231,7 +231,7 @@ When you create a table, each column has a **type** — what kind of data it hol
 | `timestamptz` | `2026-03-18 09:22:01+07` | When a row was created |
 | `bigserial` | `1`, `2`, `3`... | Auto-incrementing IDs |
 
-Using the correct type means the database enforces it — you cannot accidentally store text in a number field.
+Using the correct type means the database enforces it - you cannot accidentally store text in a number field.
 
 ---
 
@@ -254,4 +254,4 @@ flowchart LR
     Client --> You
 ```
 
-Supabase is the database, the security layer, and the authentication system — all in one managed platform. You focus on writing your app; Supabase handles the infrastructure.
+Supabase is the database, the security layer, and the authentication system - all in one managed platform. You focus on writing your app; Supabase handles the infrastructure.

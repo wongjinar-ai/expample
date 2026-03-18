@@ -1,4 +1,4 @@
-# Vercel — Hosting & Deployment for Beginners
+# Vercel - Hosting & Deployment for Beginners
 
 ## What is Vercel?
 
@@ -24,10 +24,10 @@ flowchart LR
 
 | What you need | How Vercel provides it |
 |---------------|----------------------|
-| A public URL for your app | Automatic — `your-app.vercel.app` |
-| HTTPS (secure connection) | Automatic — included for free |
+| A public URL for your app | Automatic - `your-app.vercel.app` |
+| HTTPS (secure connection) | Automatic - included for free |
 | Fast loading worldwide | CDN (content delivery network) built in |
-| Auto-deploy when you push | Connected to GitHub — deploys on every push |
+| Auto-deploy when you push | Connected to GitHub - deploys on every push |
 | Zero server management | No server to set up, patch, or maintain |
 
 Vercel is purpose-built for Next.js (the same company made both), so compatibility is seamless.
@@ -51,7 +51,7 @@ sequenceDiagram
     Vercel->>Vercel: npm install (install packages)
     Vercel->>Vercel: npm run build (compile TypeScript)
     Vercel->>Vercel: Deploy to global CDN
-    Vercel-->>You: Build success — live URL updated
+    Vercel-->>You: Build success - live URL updated
 
     Staff->>Vercel: Visit https://your-app.vercel.app
     Vercel-->>Staff: Serve the Next.js app
@@ -77,7 +77,7 @@ flowchart TD
     Tourist[Tourist booking from Germany] --> EU
 ```
 
-The user gets served by the nearest server — so the app loads fast regardless of where they are.
+The user gets served by the nearest server - so the app loads fast regardless of where they are.
 
 ---
 
@@ -120,7 +120,7 @@ flowchart LR
 |----------|---------------|-----|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | App needs to connect to Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | App needs to query the database |
-| `SUPABASE_SERVICE_ROLE_KEY` | **No** | This is only for `/new-booking` on your laptop — never on Vercel |
+| `SUPABASE_SERVICE_ROLE_KEY` | **No** | This is only for `/new-booking` on your laptop - never on Vercel |
 
 **Important:** The `NEXT_PUBLIC_` prefix means the variable is safe to expose to the browser. Variables WITHOUT that prefix are server-side only.
 
@@ -128,7 +128,7 @@ flowchart LR
 
 ## Preview Deployments
 
-Every time you push to a branch (not just `main`), Vercel creates a **preview deployment** — a temporary URL to test your changes before they go live.
+Every time you push to a branch (not just `main`), Vercel creates a **preview deployment** - a temporary URL to test your changes before they go live.
 
 ```mermaid
 gitGraph
@@ -142,8 +142,8 @@ gitGraph
     commit id: "Other work"
 ```
 
-- `main` branch → `https://your-app.vercel.app` (production — what staff use)
-- `feature/new-filter` branch → `https://your-app-git-feature-new-filter.vercel.app` (preview — just for testing)
+- `main` branch → `https://your-app.vercel.app` (production - what staff use)
+- `feature/new-filter` branch → `https://your-app-git-feature-new-filter.vercel.app` (preview - just for testing)
 
 ---
 
@@ -195,9 +195,9 @@ mindmap
 ```
 
 The most useful pages:
-1. **Deployments** — see every deploy and its status
-2. **Settings → Environment Variables** — manage your secrets
-3. **Build logs** — debug failed deployments
+1. **Deployments** - see every deploy and its status
+2. **Settings → Environment Variables** - manage your secrets
+3. **Build logs** - debug failed deployments
 
 ---
 

@@ -1,4 +1,4 @@
-# Claude Skills — Automating Your Workflow with Slash Commands
+# Claude Skills - Automating Your Workflow with Slash Commands
 
 ## What is a Claude Skill?
 
@@ -14,7 +14,7 @@ flowchart LR
     Trigger --> Load --> Execute --> Result
 ```
 
-Your project already uses one: `/new-booking` — paste a screenshot of an OTA booking, type the command, and Claude fills in and saves the booking to your database.
+Your project already uses one: `/new-booking` - paste a screenshot of an OTA booking, type the command, and Claude fills in and saves the booking to your database.
 
 ---
 
@@ -83,12 +83,12 @@ sequenceDiagram
 
 | Task type | Example skill |
 |-----------|--------------|
-| Data intake | `/new-booking` — parse screenshot and insert to DB |
-| Validation | `/validate` — check the app still works correctly |
-| Daily checks | `/daily-check` — summarise today's bookings |
-| Code review | `/review` — check a file for bugs or issues |
-| Reports | `/monthly-report` — generate a summary from Supabase data |
-| Setup helpers | `/setup-env` — guide through setting up .env.local |
+| Data intake | `/new-booking` - parse screenshot and insert to DB |
+| Validation | `/validate` - check the app still works correctly |
+| Daily checks | `/daily-check` - summarise today's bookings |
+| Code review | `/review` - check a file for bugs or issues |
+| Reports | `/monthly-report` - generate a summary from Supabase data |
+| Setup helpers | `/setup-env` - guide through setting up .env.local |
 
 ---
 
@@ -106,26 +106,26 @@ Create the file `.claude/commands/validate.md`:
 You are performing a validation check on the Himmapun Retreat hotel app.
 Follow these steps in order.
 
-## Step 1 — Check key files exist
+## Step 1 - Check key files exist
 Verify these files exist and are not empty:
 - src/app/dashboard/page.tsx
 - src/app/bookings/page.tsx
 - src/lib/supabase/client.ts
 - src/lib/constants.ts
 
-## Step 2 — Check business rules
+## Step 2 - Check business rules
 Read src/lib/helpers.ts and verify:
 - calcNights returns checkout - checkin in days
 - fmtMoney formats numbers as ฿ integers with no decimals
 - isStayingOn checks: checkin <= date AND checkout > date
 
-## Step 3 — Check constants
+## Step 3 - Check constants
 Read src/lib/constants.ts and verify:
 - ROOMS array has exactly 12 entries
 - OCC_ROOMS has exactly 10 entries (excludes Extra 1 and Extra 2)
 - Every room in ROOMS has a matching entry in ROOM_TYPES
 
-## Step 4 — Report
+## Step 4 - Report
 List any issues found. If everything looks correct, say:
 "Validation passed. All checks OK."
 ```
@@ -158,7 +158,7 @@ Use the Supabase REST API to:
 Then display a morning briefing:
 
 ---
-## Morning Briefing — [today's date]
+## Morning Briefing - [today's date]
 
 ### Checking In Today
 [list guest names, rooms, number of guests]
@@ -234,13 +234,13 @@ flowchart TD
 
 ## Tips for Writing Good Skills
 
-**Be specific and sequential.** Claude follows instructions in order — write them like a numbered recipe.
+**Be specific and sequential.** Claude follows instructions in order - write them like a numbered recipe.
 
 **Reference real file paths.** Instead of "check the helpers", write "read `src/lib/helpers.ts`".
 
 **Define what done looks like.** End every skill with a clear success message so you know it finished.
 
-**Keep skills focused.** One skill = one task. Do not combine booking intake and validation into one skill — make two.
+**Keep skills focused.** One skill = one task. Do not combine booking intake and validation into one skill - make two.
 
 **Test the skill manually first.** Run it once and see if Claude follows the steps correctly. Adjust the instructions if not.
 
@@ -252,9 +252,9 @@ flowchart TD
 |---------|--------|
 | Location | `.claude/commands/your-skill-name.md` |
 | How to invoke | Type `/your-skill-name` in Claude Code |
-| Language | Plain Markdown — no special syntax needed |
+| Language | Plain Markdown - no special syntax needed |
 | Access to files | Claude can read any file in your project |
-| Access to secrets | Via `.env.local` — Claude reads it when the skill asks |
+| Access to secrets | Via `.env.local` - Claude reads it when the skill asks |
 | Access to the web | Claude can make HTTP requests if the skill instructs it |
 | Access to images | Paste an image before invoking the skill |
 
@@ -262,4 +262,4 @@ flowchart TD
 
 ## Summary
 
-Skills are reusable, automated workflows that live in your project. They turn repetitive tasks — like adding a booking from a screenshot or validating business logic — into a single slash command. Write them once, use them forever.
+Skills are reusable, automated workflows that live in your project. They turn repetitive tasks - like adding a booking from a screenshot or validating business logic - into a single slash command. Write them once, use them forever.

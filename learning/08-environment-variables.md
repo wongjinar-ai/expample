@@ -1,4 +1,4 @@
-# Environment Variables — Keeping Secrets Safe
+# Environment Variables - Keeping Secrets Safe
 
 ## What is an Environment Variable?
 
@@ -13,7 +13,7 @@ Think of it like this: your code is a recipe, and the environment variable is a 
 Imagine you wrote your Supabase password directly in your code:
 
 ```typescript
-// BAD — never do this!
+// BAD - never do this!
 const supabase = createClient(
   "https://xyzxyz.supabase.co",    // hardcoded URL
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...secret_key..."  // hardcoded key!
@@ -24,18 +24,18 @@ If you push this to GitHub, **anyone in the world** can see your key, access you
 
 With environment variables:
 ```typescript
-// GOOD — key is never in the code
+// GOOD - key is never in the code
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 ```
 
-The actual values live in `.env.local` — a file that is never sent to GitHub.
+The actual values live in `.env.local` - a file that is never sent to GitHub.
 
 ---
 
-## How It Works — The Flow
+## How It Works - The Flow
 
 ```mermaid
 flowchart TD
@@ -65,11 +65,11 @@ Rules:
 - No spaces around the `=` sign
 - No quotes needed (unless the value has special characters)
 - Lines starting with `#` are comments
-- The file is named `.env.local` — note the dot at the start
+- The file is named `.env.local` - note the dot at the start
 
 ---
 
-## The .gitignore File — Your Safety Net
+## The .gitignore File - Your Safety Net
 
 The `.gitignore` file tells Git to ignore certain files. Your `.env.local` must be in `.gitignore`:
 
@@ -92,12 +92,12 @@ Next.js adds `.env.local` to `.gitignore` automatically when you create the proj
 
 ---
 
-## The .env.example File — The Template
+## The .env.example File - The Template
 
 Since `.env.local` is secret, how does a collaborator know which variables they need? That is what `.env.example` is for.
 
 ```bash
-# .env.example — safe to commit, contains NO real values
+# .env.example - safe to commit, contains NO real values
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -141,7 +141,7 @@ The `SUPABASE_SERVICE_ROLE_KEY` has no `NEXT_PUBLIC_` prefix because it must nev
 
 ## Where Variables Live in Each Environment
 
-You have three "environments" — three places your app runs:
+You have three "environments" - three places your app runs:
 
 ```mermaid
 flowchart TD
@@ -169,7 +169,7 @@ You set Vercel's variables once in the dashboard. They do not need to be committ
 |----------|-------------|----------|---------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL | `.env.local` + Vercel | Connect to database |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → anon key | `.env.local` + Vercel | Query database (with RLS) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → service_role | `.env.local` ONLY | `/new-booking` command — bypasses RLS |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → service_role | `.env.local` ONLY | `/new-booking` command - bypasses RLS |
 
 ---
 
@@ -217,8 +217,8 @@ mindmap
 
 ## Summary
 
-1. Secret values go in `.env.local` — never in code
-2. `.env.local` is in `.gitignore` — never sent to GitHub
+1. Secret values go in `.env.local` - never in code
+2. `.env.local` is in `.gitignore` - never sent to GitHub
 3. `.env.example` is a public template with empty values
 4. `NEXT_PUBLIC_` prefix = safe for browser; no prefix = server only
 5. Vercel stores its own copy of variables in the dashboard
