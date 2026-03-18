@@ -2,42 +2,40 @@
 
 ## Project Summary
 
-Single-file hotel management web app (`index.html`) for Himmapun Retreat, Chiang Mai, Thailand. No framework, no bundler, no backend. All state lives in browser `localStorage`. AI booking intake uses the Anthropic Messages API.
+Hotel management web app for Himmapun Retreat, Chiang Mai, Thailand. Built with Next.js (App Router), Supabase (PostgreSQL + Auth), and TailwindCSS. Hosted on Vercel. All staff access it via a shared URL with individual logins.
+
+AI-powered booking intake is handled via the `/new-booking` Claude Code slash command — paste an OTA screenshot into Claude Code, confirm the extracted fields, and Claude inserts the booking directly into Supabase using the service role key stored in `.env.local`.
 
 ---
 
 ## File Structure
 
-Everything is in one file: `index.html`
-
 ```
-index.html
-├── <style>        All CSS (variables, components, layout)
-├── <body>
-│   ├── .sidebar   Nav links + logo + live date badge
-│   ├── .main
-│   │   ├── .topbar              Page title + "+ New Booking" button
-│   │   └── .content
-│   │       ├── #panel-dashboard
-│   │       ├── #panel-dayguest
-│   │       ├── #panel-bookings
-│   │       ├── #panel-cleaning
-│   │       ├── #panel-shifts
-│   │       └── #panel-monthly
-│   └── #booking-modal           Screenshot upload zone + booking form
-└── <script>
-    ├── Constants      ROOMS[], ROOM_TYPES{}, OCC_ROOMS[], SOURCES[]
-    ├── State          bookings[], SHIFTS[], MONTHLY_OTHER{}
-    ├── Helpers        fmtDate(), fmtMoney(), calcNights(), badge helpers
-    ├── renderDashboard()
-    ├── renderDayGuest()
-    ├── renderBookings()
-    ├── renderCleaning() + updateClean()
-    ├── renderShifts()
-    ├── renderMonthly()
-    ├── openModal() / closeModal() / saveBooking()
-    ├── handleScreenshot()    Anthropic API call for AI parsing
-    └── Init                  populateRoomFilter() + renderDashboard()
+src/
+├── app/
+│   ├── layout.tsx              Root layout (fonts, Supabase provider)
+│   ├── page.tsx                Redirect to /dashboard
+│   ├── login/page.tsx          Email + password login form
+│   ├── dashboard/page.tsx      Metric cards, weekly grid, room status
+│   ├── day-guest/page.tsx      Room × date grid
+│   ├── bookings/page.tsx       Full booking list with filters
+│   ├── cleaning/page.tsx       Room cleaning status table
+│   ├── shifts/page.tsx         Staff weekly rota
+│   └── monthly/page.tsx        Monthly income summary
+├── components/
+│   ├── layout/                 Sidebar, Topbar
+│   ├── bookings/               BookingModal
+│   ├── dashboard/              MetricCards, WeeklyGrid, OccupancyByRoom
+│   └── ui/                     Badge, StatusDropdown
+├── lib/
+│   ├── supabase/client.ts      Browser Supabase client
+│   ├── supabase/server.ts      Server Supabase client
+│   ├── constants.ts            ROOMS, ROOM_TYPES, OCC_ROOMS, SOURCES
+│   └── helpers.ts              fmtDate, fmtMoney, calcNights, isStayingOn
+└── middleware.ts               Auth session guard (redirects to /login)
+
+.claude/commands/
+└── new-booking.md              /new-booking slash command for screenshot intake
 ```
 
 ---
@@ -81,18 +79,20 @@ const ROOM_TYPES = {
 
 ## Data Persistence
 
-- Key: `localStorage.getItem('hm_bookings')`
-- Format: JSON array of Booking objects
-- Save on every create, edit, delete, and clean status change
-- No migration layer — changes to the Booking shape must handle missing fields gracefully with defaults
+- Database: Supabase PostgreSQL
+- All reads/writes go through the Supabase JS client (browser) or server client (API routes)
+- Row Level Security on all tables: `auth.role() = 'authenticated'`
+- The `/new-booking` slash command uses the `SUPABASE_SERVICE_ROLE_KEY` from `.env.local` to write directly via the Supabase REST API — this key is never in the app or committed to git
 
 ---
 
 ## Booking Object Shape
 
+Column names use `snake_case` in the database (Supabase convention):
+
 ```typescript
 interface Booking {
-  id: number;              // auto-increment
+  id: number;              // auto-increment (bigserial)
   guest: string;
   guest2: string;          // optional second guest
   room: string;            // must be one of ROOMS[]
@@ -102,28 +102,38 @@ interface Booking {
   checkout: string;        // YYYY-MM-DD
   nights: number;          // auto-calculated
   source: 'Direct' | 'Booking.com' | 'Agoda' | 'Airbnb' | 'Other';
-  gross: number;           // ฿
-  comm: number;            // ฿, from OTA statement
-  netIncome: number;       // auto-calculated
+  gross: number;           // ฿, integer
+  comm: number;            // ฿, from OTA statement, integer
+  net_income: number;      // auto-calculated: gross - comm
   status: 'Upcoming' | 'Check-in' | 'Occupied' | 'Checkout' | 'Completed';
-  cleanStatus: '🟢 Clean' | '🔴 Needs Cleaning' | '🟡 In Progress';
+  clean_status: '🟢 Clean' | '🔴 Needs Cleaning' | '🟡 In Progress';
   special: string;
   tm30: boolean;
-  bookingRef: string;      // OTA reference, optional
+  booking_ref: string;     // OTA reference, optional
+  created_at: string;      // timestamptz, auto
+  updated_at: string;      // timestamptz, auto
 }
 ```
 
 ---
 
-## AI Screenshot Parsing
+## /new-booking Slash Command
 
-- **Endpoint:** `POST https://api.anthropic.com/v1/messages`
-- **Model:** `claude-sonnet-4-20250514`
-- **Auth header:** `x-api-key` (browser-side call)
-- **Input:** base64-encoded image + extraction prompt
-- **Output:** JSON object with fields: `guest, checkin, checkout, guests, source, gross, comm, booking_number, special`
-- The form is auto-filled from the response; user must still select the room manually
-- Handle parse failures gracefully — show error state in upload zone, allow manual entry
+The `.claude/commands/new-booking.md` file defines a slash command for adding bookings from OTA screenshots without touching the app UI.
+
+**Workflow:**
+1. User pastes a screenshot into Claude Code
+2. User types `/new-booking`
+3. Claude extracts booking fields from the image
+4. Claude shows a confirmation table and asks for the room assignment
+5. User types `confirm`
+6. Claude inserts the booking into Supabase via REST API using `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`
+
+**Required in `.env.local`:**
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
 
 ---
 
@@ -153,16 +163,16 @@ Fonts loaded from Google Fonts:
 
 ## Panel Rendering Pattern
 
-Each panel has a dedicated render function. `showPanel(id)` hides all panels, shows the target, updates nav state, and calls the render function. Render functions read from `bookings[]` and write HTML directly via `innerHTML` or `insertAdjacentHTML`. There is no virtual DOM or diffing — re-render the whole section on any data change.
+Each page (`/dashboard`, `/bookings`, etc.) is a separate Next.js route. Data is fetched from Supabase on page load. There is no global state — each page fetches what it needs. Re-navigate to the page to refresh data (no real-time sync required).
 
 ---
 
 ## Coding Conventions
 
-- No external JS libraries or frameworks — vanilla JS only
-- All CSS in the single `<style>` block; no external stylesheets beyond Google Fonts
+- TypeScript throughout — no `any`
+- TailwindCSS for all styling — no separate CSS files
 - Use `const` and `let`; no `var`
-- Date strings are always `YYYY-MM-DD`; use `new Date(dateStr + 'T00:00:00')` to avoid timezone shifts when parsing
+- Date strings are always `YYYY-MM-DD`; use `new Date(dateStr + 'T00:00:00')` to avoid timezone shifts
 - Money values are integers (฿, no decimals)
-- IDs auto-increment: `Math.max(0, ...bookings.map(b => b.id)) + 1`
-- Always re-render the dashboard after any booking mutation so metric cards stay in sync
+- Always derive `type` from `ROOM_TYPES[room]` — never let the user set it directly
+- Always calculate `nights` and `net_income` in code — never trust user input for these fields

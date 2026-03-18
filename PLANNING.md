@@ -28,7 +28,7 @@
 | Hosting | Vercel |
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (individual accounts, single role) |
-| AI | Anthropic Messages API — server-side only (API key in `.env`) |
+| AI booking intake | Claude Code `/new-booking` slash command (owner's machine only) |
 | Styling | TailwindCSS |
 | Real-time sync | Not needed — page refresh acceptable |
 | Mobile | Responsive web app (not PWA) |
@@ -51,9 +51,12 @@
 - Dashboard UI makes it easy to inspect and edit data directly
 - Row Level Security (RLS) enforces auth at the database level
 
-### Anthropic API (Server-side only)
-- API key stored in Vercel environment variable — never exposed to the browser
-- Screenshot → Next.js API route → Anthropic → extracted JSON back to client
+### AI Booking Intake — Claude Code Slash Command
+- Handled entirely outside the app via `.claude/commands/new-booking.md`
+- Owner pastes OTA screenshot into Claude Code, types `/new-booking`
+- Claude extracts fields, shows confirmation table, inserts directly into Supabase
+- Uses `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` on owner's machine — never in the app or Vercel
+- No Anthropic API key needed in the app
 
 ### TailwindCSS
 - Utility-first, responsive by default
@@ -73,7 +76,6 @@ graph TB
 
     subgraph Vercel["Vercel (Hosting)"]
         APP[Next.js App Router]
-        API["/api/parse-screenshot\nAPI Route"]
     end
 
     subgraph Supabase["Supabase"]
@@ -82,24 +84,23 @@ graph TB
         RLS[Row Level Security]
     end
 
-    subgraph Anthropic["Anthropic"]
-        CLAUDE[claude-sonnet-4-20250514]
+    subgraph Local["Owner Machine Only"]
+        CC[Claude Code]
+        ENV2[".env.local with service role key"]
     end
 
     UI -->|"page requests"| APP
     UI -->|"CRUD via JS client"| DB
     UI -->|"session / login"| AUTH
-    UI -->|"POST image"| API
-    API -->|"x-api-key: env var"| CLAUDE
-    CLAUDE -->|"extracted JSON"| API
-    API -->|"booking fields"| UI
+    CC -->|"INSERT booking via REST API"| DB
+    CC --- ENV2
     DB --- RLS
     AUTH -->|"auth.uid()"| RLS
 
     style Client fill:#1e201d,stroke:#c8e84a,color:#e8ead5
     style Vercel fill:#1e201d,stroke:#60a5fa,color:#e8ead5
     style Supabase fill:#1e201d,stroke:#4ade80,color:#e8ead5
-    style Anthropic fill:#1e201d,stroke:#fbbf24,color:#e8ead5
+    style Local fill:#1e201d,stroke:#fbbf24,color:#e8ead5
 ```
 
 ### Deployment Pipeline
@@ -464,9 +465,6 @@ flowchart TD
 │   │   │   └── page.tsx              Staff weekly rota
 │   │   ├── monthly/
 │   │   │   └── page.tsx              Monthly income summary
-│   │   └── api/
-│   │       └── parse-screenshot/
-│   │           └── route.ts          Server-side Anthropic call
 │   │
 │   ├── components/
 │   │   ├── layout/
@@ -493,9 +491,12 @@ flowchart TD
 │   └── middleware.ts                 Auth session check on all routes
 │
 ├── .env.local                        Local secrets (never committed)
+│                                     Includes SUPABASE_SERVICE_ROLE_KEY for /new-booking skill
 ├── .env.example                      Template with key names only
 ├── tailwind.config.ts                Design tokens (colors, fonts)
-└── next.config.ts                    Next.js config
+├── next.config.ts                    Next.js config
+└── .claude/commands/
+    └── new-booking.md                /new-booking slash command for screenshot intake
 ```
 
 ---
@@ -543,9 +544,9 @@ gantt
 | M0.1 | Install Node.js | See [Setup Instructions → Step 1](#step-1-install-nodejs) |
 | M0.2 | Create Supabase project | See [Setup Instructions → Step 2](#step-2-create-supabase-project) |
 | M0.3 | Create Vercel account + connect GitHub repo | See [Setup Instructions → Step 3](#step-3-connect-vercel) |
-| M0.4 | Get Anthropic API key | See [Setup Instructions → Step 4](#step-4-get-anthropic-api-key) |
+| M0.4 | Add `SUPABASE_SERVICE_ROLE_KEY` to `.env.local` | See [Setup Instructions → Step 4](#step-4-configure-environment-variables) |
 
-**Done when:** `node -v` returns a version, Supabase project exists, Vercel is connected to the GitHub repo, and you have all three API keys ready.
+**Done when:** `node -v` returns a version, Supabase project exists, Vercel is connected to the GitHub repo, and `.env.local` contains both Supabase keys.
 
 ---
 
@@ -608,20 +609,19 @@ gantt
 
 ---
 
-### M4 — AI Intake & Monthly Summary
-**Goal:** Screenshot parsing works and the monthly report is complete.
+### M4 — Monthly Summary & Slash Command
+**Goal:** Monthly report is complete and the `/new-booking` slash command is tested end-to-end.
 
 | # | Task |
 |---|------|
-| M4.1 | `/api/parse-screenshot` route — calls Anthropic server-side |
-| M4.2 | Screenshot upload zone in booking modal (drag + drop + browse) |
-| M4.3 | Loading / success / error states in upload zone |
-| M4.4 | Auto-fill form fields from AI response |
-| M4.5 | Monthly Summary page — room income columns from bookings |
-| M4.6 | Monthly other income columns — manually entered per month |
-| M4.7 | Totals row at bottom of monthly table |
+| M4.1 | Monthly Summary page — room income columns from bookings |
+| M4.2 | Monthly other income columns — manually entered per month |
+| M4.3 | Totals row at bottom of monthly table |
+| M4.4 | Add `SUPABASE_SERVICE_ROLE_KEY` to `.env.local` |
+| M4.5 | Test `/new-booking` with a real OTA screenshot |
+| M4.6 | Verify the inserted booking appears correctly in the app |
 
-**Done when:** Dropping a Booking.com screenshot fills the booking form automatically, and the monthly summary shows correct occupancy % and income totals.
+**Done when:** Monthly summary shows correct occupancy % and totals, and pasting a screenshot and typing `/new-booking` successfully saves a booking to Supabase.
 
 ---
 
@@ -693,27 +693,27 @@ Go to https://nodejs.org → download the **LTS** version for macOS → run the 
 3. Find and select the `expample` GitHub repository
 4. Under **Framework Preset**, select **Next.js** (auto-detected)
 5. Do **not** deploy yet — click **Environment Variables** first
-6. Add these three variables:
+6. Add these two variables (from Supabase → Project Settings → API):
    ```
    NEXT_PUBLIC_SUPABASE_URL       = (your Supabase Project URL)
    NEXT_PUBLIC_SUPABASE_ANON_KEY  = (your Supabase anon key)
-   ANTHROPIC_API_KEY              = (your Anthropic API key — Step 4)
    ```
+   Note: `SUPABASE_SERVICE_ROLE_KEY` is **not** added to Vercel — it lives only in `.env.local` on your machine for the `/new-booking` slash command.
 7. Click **Deploy** — the first deploy will fail (no Next.js app yet), that is fine
 8. Note your app URL (e.g. `https://expample.vercel.app`) — this is where the app will live
 
 ---
 
-### Step 4: Get Anthropic API Key
+### Step 4: Get Supabase Service Role Key
 
-1. Go to https://console.anthropic.com and sign in
-2. Click **API Keys** in the left sidebar
-3. Click **Create Key**
-4. Name it `himmapun-retreat`
-5. Copy the key (starts with `sk-ant-...`) — it is only shown once
-6. Add it as `ANTHROPIC_API_KEY` in both:
-   - Your local `.env.local` file (Step 6)
-   - Vercel environment variables (Step 3)
+This key is only needed for the `/new-booking` slash command on your local machine — it is never added to Vercel.
+
+1. Go to your Supabase project dashboard
+2. Click **Project Settings → API**
+3. Under **Project API keys**, find the `service_role` key (marked "secret")
+4. Copy it — add it to `.env.local` in Step 6 as `SUPABASE_SERVICE_ROLE_KEY`
+
+> **Important:** This key bypasses Row Level Security. Never commit it to git. Never add it to Vercel.
 
 ---
 
@@ -732,8 +732,8 @@ npx create-next-app@latest . \
   --import-alias "@/*" \
   --no-git
 
-# Install Supabase and Anthropic packages
-npm install @supabase/supabase-js @supabase/ssr @anthropic-ai/sdk
+# Install Supabase packages
+npm install @supabase/supabase-js @supabase/ssr
 ```
 
 ---
@@ -746,7 +746,7 @@ Create a `.env.local` file in the project root:
 # .env.local — never commit this file
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-ANTHROPIC_API_KEY=sk-ant-api03-...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # for /new-booking slash command only
 ```
 
 Also create a `.env.example` file (safe to commit — no real values):
@@ -755,7 +755,7 @@ Also create a `.env.example` file (safe to commit — no real values):
 # .env.example — copy to .env.local and fill in your values
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-ANTHROPIC_API_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 Make sure `.env.local` is in `.gitignore` (Next.js adds it by default).
