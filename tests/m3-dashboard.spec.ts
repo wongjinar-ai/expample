@@ -43,38 +43,34 @@ test.describe('M3 — Dashboard, Day Guest & Shifts', () => {
 
   test('day guest page loads with room × date grid', async ({ page }) => {
     await login(page)
-    await page.goto('/day-guest')
+    await page.goto('/dashboard?tab=rooms')
     await page.waitForLoadState('networkidle')
-    await expect(page.getByRole('heading', { name: 'Day Guest' })).toBeVisible()
-    // All 12 rooms should appear
+    // All 12 rooms should appear in the grid
     for (const room of ['ม่วง', 'ชมพู', 'Tent 1', 'Bungalow 1', 'Extra 1']) {
       await expect(page.getByText(room).first()).toBeVisible()
     }
-    // Date navigation buttons
-    await expect(page.getByRole('button', { name: '‹' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '›' })).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/m3-03-day-guest.png', fullPage: true })
   })
 
-  test('day guest date navigation works', async ({ page }) => {
+  test('rooms tab new booking button is visible', async ({ page }) => {
     await login(page)
-    await page.goto('/day-guest')
+    await page.goto('/dashboard?tab=rooms')
     await page.waitForLoadState('networkidle')
 
-    // Click next week
-    await page.getByRole('button', { name: '›' }).click()
-    await page.screenshot({ path: 'test-results/screenshots/m3-04-day-guest-next.png', fullPage: true })
+    // New Booking button should be present
+    await expect(page.getByRole('button', { name: '+ New Booking' })).toBeVisible()
+    await page.screenshot({ path: 'test-results/screenshots/m3-04-rooms-new-booking.png', fullPage: true })
 
-    // Click previous week to go back
-    await page.getByRole('button', { name: '‹' }).click()
-    await page.screenshot({ path: 'test-results/screenshots/m3-05-day-guest-prev.png', fullPage: true })
+    // Filter dropdown should be present
+    await expect(page.getByRole('combobox').first()).toBeVisible()
+    await page.screenshot({ path: 'test-results/screenshots/m3-05-rooms-filter.png', fullPage: true })
   })
 
   test('shifts page loads', async ({ page }) => {
     await login(page)
-    await page.goto('/shifts')
+    await page.goto('/dashboard?tab=shifts')
     await page.waitForLoadState('networkidle')
-    await expect(page.getByRole('heading', { name: 'Shifts' })).toBeVisible()
+    await expect(page.getByText('Staff shifts').first()).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/m3-06-shifts.png', fullPage: true })
   })
 
