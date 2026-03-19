@@ -305,6 +305,23 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
   const [autoFilling, setAutoFilling] = useState(false)
   const [isExtending, setIsExtending] = useState(false)
 
+  // ── Auto-generate invoice number for new bookings ─────────────────────────
+  useEffect(() => {
+    if (booking?.id) return // editing — keep existing invoice
+    const now = new Date()
+    const yy = String(now.getFullYear()).slice(2)
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const prefix = `DS${yy}-${mm}-`
+    createClient()
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .like('invoice_no', `${prefix}%`)
+      .then(({ count }) => {
+        const seq = String((count ?? 0) + 1).padStart(7, '0')
+        setForm(f => ({ ...f, invoice_no: `${prefix}${seq}` }))
+      })
+  }, [booking?.id])
+
   // Recalculate nights + net when dates/amounts change
   useEffect(() => {
     if (form.checkin && form.checkout) {
@@ -502,6 +519,19 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
 
   // ── Extend ───────────────────────────────────────────────────────────────
   function handleExtend() {
+    // Generate a fresh invoice number for the extension
+    const now = new Date()
+    const yy = String(now.getFullYear()).slice(2)
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const prefix = `DS${yy}-${mm}-`
+    createClient()
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .like('invoice_no', `${prefix}%`)
+      .then(({ count }) => {
+        const seq = String((count ?? 0) + 1).padStart(7, '0')
+        setForm(f => ({ ...f, invoice_no: `${prefix}${seq}` }))
+      })
     setForm(f => ({
       ...f,
       invoice_no: '',
