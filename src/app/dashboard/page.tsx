@@ -630,6 +630,7 @@ function IncomeTab() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [editing, setEditing] = useState<Booking | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -692,7 +693,7 @@ function IncomeTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface)' }}>
-                {['Room', 'Guest', 'Check-in', 'Check-out', 'Nights', 'Gross', 'Comm (฿)', 'Net income', 'Source'].map(h => (
+                {['Room', 'Guest', 'Check-in', 'Check-out', 'Nights', 'Gross', 'Comm (฿)', 'Net income', 'Source', ''].map(h => (
                   <th key={h} style={TH}>{h}</th>
                 ))}
               </tr>
@@ -716,6 +717,13 @@ function IncomeTab() {
                   <td style={{ ...TD, color: 'var(--red)' }}>{b.comm > 0 ? `−${fmtMoney(b.comm)}` : '—'}</td>
                   <td style={{ ...TD, color: 'var(--blue)', fontWeight: 500 }}>{fmtMoney(b.net_income)}</td>
                   <td style={TD}><SourceBadge source={b.source} /></td>
+                  <td style={{ ...TD, textAlign: 'right' }}>
+                    <button
+                      onClick={() => setEditing(b)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '0.9rem', padding: '2px 4px', borderRadius: '4px' }}
+                      title="Edit booking"
+                    >✏️</button>
+                  </td>
                 </tr>
               ))}
               {filtered.length > 0 && (
@@ -724,13 +732,21 @@ function IncomeTab() {
                   <td style={{ ...TD, color: 'var(--green)', fontWeight: 600 }}>{fmtMoney(grossTotal)}</td>
                   <td style={{ ...TD, color: 'var(--red)', fontWeight: 600 }}>−{fmtMoney(commTotal)}</td>
                   <td style={{ ...TD, color: 'var(--blue)', fontWeight: 600 }}>{fmtMoney(netTotal)}</td>
-                  <td style={TD} />
+                  <td style={TD} colSpan={2} />
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {editing && (
+        <BookingModal
+          booking={editing as Booking & { id: number }}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load() }}
+        />
+      )}
     </>
   )
 }
