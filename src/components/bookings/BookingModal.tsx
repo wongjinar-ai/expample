@@ -612,10 +612,10 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
 
           {/* ── Financials ── */}
           {field('bm-gross', 'Gross (฿) *',
-            <input id="bm-gross" type="number" min={0} style={inputStyle} value={form.gross} onChange={e => set('gross', parseInt(e.target.value) || 0)} required />
+            <input id="bm-gross" type="number" min={0} step="0.01" style={inputStyle} value={form.gross} onChange={e => set('gross', parseFloat(e.target.value) || 0)} required />
           )}
           {field('bm-comm', 'Commission (฿)',
-            <input id="bm-comm" type="number" min={0} style={inputStyle} value={form.comm} onChange={e => set('comm', parseInt(e.target.value) || 0)} />
+            <input id="bm-comm" type="number" min={0} step="0.01" style={inputStyle} value={form.comm} onChange={e => set('comm', parseFloat(e.target.value) || 0)} />
           )}
           {field('bm-net', 'Net Income (฿)',
             <input id="bm-net" style={{ ...inputStyle, opacity: 0.6 }} value={form.gross - form.comm} readOnly />
