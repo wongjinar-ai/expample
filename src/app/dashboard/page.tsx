@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { fmtMoney } from '@/lib/helpers'
 import { OCC_ROOMS, ROOM_TYPES } from '@/lib/constants'
 import type { Room } from '@/lib/constants'
+import BookingModal from '@/components/bookings/BookingModal'
 
 interface Booking {
   id: number
@@ -18,6 +19,31 @@ interface Booking {
   gross: number
   net_income: number
   source: string
+}
+
+// Full shape that BookingModal expects
+interface FullBooking {
+  id: number
+  guest: string
+  guest2: string
+  room: string
+  type: string
+  guests: number
+  checkin: string
+  checkout: string
+  nights: number
+  source: string
+  gross: number
+  comm: number
+  net_income: number
+  status: string
+  clean_status: string
+  special: string
+  tm30: boolean
+  booking_ref: string
+  passport_url?: string
+  tm30_url?: string
+  passport_uploaded_at?: string
 }
 
 function isOccupiedOn(b: Booking, dateStr: string): boolean {
@@ -41,7 +67,15 @@ const SOURCE_COLORS: Record<string, { bg: string; color: string }> = {
   'Other':       { bg: 'rgba(155,143,176,0.15)', color: '#9b8fb0' },
 }
 
-function GuestRow({ b, accent }: { b: Booking; accent: string }) {
+function EditIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M11.5 1.5a1.414 1.414 0 0 1 2 2L5 12l-3 1 1-3 8.5-8.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function GuestRow({ b, accent, onEdit }: { b: Booking; accent: string; onEdit?: () => void }) {
   const type = ROOM_TYPES[b.room as Room] ?? ''
   const src = SOURCE_COLORS[b.source] ?? { bg: 'rgba(155,143,176,0.15)', color: '#9b8fb0' }
   const avatarBg = accent === '#4ade80' ? 'rgba(74,222,128,0.18)' : 'rgba(251,191,36,0.18)'
@@ -62,6 +96,16 @@ function GuestRow({ b, accent }: { b: Booking; accent: string }) {
       <span className="text-xs px-2.5 py-1 rounded-lg shrink-0" style={{ background: src.bg, color: src.color }}>
         {b.source}
       </span>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(75,0,165,0.2)', color: 'var(--accent2)', border: '1px solid rgba(75,0,165,0.35)' }}
+          title="Open booking"
+        >
+          <EditIcon />
+        </button>
+      )}
     </div>
   )
 }
@@ -71,11 +115,13 @@ function TodayPanel({
   accent,
   bookings,
   emptyMsg,
+  onEdit,
 }: {
   title: string
   accent: string
   bookings: Booking[]
   emptyMsg: string
+  onEdit?: (id: number) => void
 }) {
   return (
     <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid #2e2040' }}>
@@ -92,7 +138,14 @@ function TodayPanel({
         {bookings.length === 0 ? (
           <p className="px-4 py-6 text-sm" style={{ color: 'var(--muted)' }}>{emptyMsg}</p>
         ) : (
-          bookings.map(b => <GuestRow key={b.id} b={b} accent={accent} />)
+          bookings.map(b => (
+            <GuestRow
+              key={b.id}
+              b={b}
+              accent={accent}
+              onEdit={onEdit ? () => onEdit(b.id) : undefined}
+            />
+          ))
         )}
       </div>
     </div>
@@ -102,22 +155,32 @@ function TodayPanel({
 export default function DashboardPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
+  const [editBooking, setEditBooking] = useState<FullBooking | null>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const thisMonth = today.slice(0, 7)
 
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('bookings')
-        .select('id,guest,room,guests,checkin,checkout,status,gross,net_income,source')
-        .neq('status', 'Completed')
-      setBookings(data ?? [])
-      setLoading(false)
-    }
-    load()
-  }, [])
+  async function load() {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('bookings')
+      .select('id,guest,room,guests,checkin,checkout,status,gross,net_income,source')
+      .neq('status', 'Completed')
+    setBookings(data ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function openEdit(id: number) {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (data) setEditBooking(data as FullBooking)
+  }
 
   const occupiedRooms = OCC_ROOMS.filter(room =>
     bookings.some(b => b.room === room && isOccupiedOn(b, today))
@@ -179,13 +242,14 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Today panels — Check-in left, Check-out right */}
+          {/* Today panels — Check-in left (with edit), Check-out right */}
           <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <TodayPanel
               title="Checking In Today"
               accent="#4ade80"
               bookings={checkInsToday}
               emptyMsg="No check-ins today"
+              onEdit={openEdit}
             />
             <TodayPanel
               title="Checking Out Today"
@@ -257,6 +321,15 @@ export default function DashboardPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* Booking modal — opened from Check-in today panel */}
+      {editBooking && (
+        <BookingModal
+          booking={editBooking}
+          onClose={() => setEditBooking(null)}
+          onSaved={() => { setEditBooking(null); load() }}
+        />
       )}
     </AppShell>
   )
