@@ -629,8 +629,12 @@ function RoomsTab() {
 function IncomeTab() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const now = new Date()
+  const [selectedMonthNum, setSelectedMonthNum] = useState(() => now.getMonth() + 1)
+  const [selectedYear, setSelectedYear]         = useState(() => now.getFullYear())
   const [editing, setEditing] = useState<Booking | null>(null)
+
+  const selectedMonth = `${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}`
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -642,13 +646,9 @@ function IncomeTab() {
 
   useEffect(() => { load() }, [load])
 
-  // Build month options (past 12 months)
-  const monthOptions: string[] = []
-  for (let i = 0; i < 12; i++) {
-    const d = new Date()
-    d.setMonth(d.getMonth() - i)
-    monthOptions.push(d.toISOString().slice(0, 7))
-  }
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  // Years: 3 years back up to next year
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 3 + i)
 
   const filtered = bookings.filter(b => b.checkin.startsWith(selectedMonth))
 
@@ -676,14 +676,15 @@ function IncomeTab() {
         ))}
       </div>
 
-      {/* Month selector + table */}
+      {/* Month + Year selectors */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={INPUT_STYLE}>
-          {monthOptions.map(m => (
-            <option key={m} value={m}>
-              {new Date(m + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-            </option>
+        <select value={selectedMonthNum} onChange={e => setSelectedMonthNum(Number(e.target.value))} style={INPUT_STYLE}>
+          {MONTHS.map((name, i) => (
+            <option key={i + 1} value={i + 1}>{name}</option>
           ))}
+        </select>
+        <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={INPUT_STYLE}>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
 
