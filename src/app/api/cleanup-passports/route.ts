@@ -20,9 +20,8 @@ export async function GET(request: Request) {
 
   const { data: bookings, error } = await supabase
     .from('bookings')
-    .select('id, passport_url')
-    .not('passport_url', 'is', null)
-    .lt('passport_uploaded_at', oneMonthAgo.toISOString())
+    .select('id, passport_url, passport_uploaded_at, guest2_passport_url, guest2_passport_uploaded_at')
+    .or(`passport_uploaded_at.lt.${oneMonthAgo.toISOString()},guest2_passport_uploaded_at.lt.${oneMonthAgo.toISOString()}`)
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
@@ -30,13 +29,25 @@ export async function GET(request: Request) {
 
   let deleted = 0
   for (const booking of bookings ?? []) {
-    if (!booking.passport_url) continue
-    await supabase.storage.from(BUCKET).remove([booking.passport_url])
-    await supabase
-      .from('bookings')
-      .update({ passport_url: null, passport_uploaded_at: null })
-      .eq('id', booking.id)
-    deleted++
+    const updates: Record<string, null> = {}
+    const toRemove: string[] = []
+
+    if (booking.passport_url && booking.passport_uploaded_at < oneMonthAgo.toISOString()) {
+      toRemove.push(booking.passport_url)
+      updates.passport_url = null
+      updates.passport_uploaded_at = null
+    }
+    if (booking.guest2_passport_url && booking.guest2_passport_uploaded_at < oneMonthAgo.toISOString()) {
+      toRemove.push(booking.guest2_passport_url)
+      updates.guest2_passport_url = null
+      updates.guest2_passport_uploaded_at = null
+    }
+
+    if (toRemove.length > 0) {
+      await supabase.storage.from(BUCKET).remove(toRemove)
+      await supabase.from('bookings').update(updates).eq('id', booking.id)
+      deleted++
+    }
   }
 
   return Response.json({ deleted, checked: (bookings ?? []).length })
