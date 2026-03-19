@@ -7,6 +7,7 @@ import { calcNights } from '@/lib/helpers'
 
 interface Booking {
   id?: number
+  invoice_no?: string
   guest: string
   guest2: string
   room: string
@@ -18,6 +19,7 @@ interface Booking {
   source: string
   gross: number
   comm: number
+  discount?: number
   net_income: number
   status: string
   clean_status: string
@@ -43,9 +45,9 @@ interface Booking {
 }
 
 const EMPTY: Booking = {
-  guest: '', guest2: '', room: ROOMS[0], type: ROOM_TYPES[ROOMS[0]],
+  invoice_no: '', guest: '', guest2: '', room: ROOMS[0], type: ROOM_TYPES[ROOMS[0]],
   guests: 1, checkin: '', checkout: '', nights: 0,
-  source: 'Direct', gross: 0, comm: 0, net_income: 0,
+  source: 'Direct', gross: 0, comm: 0, discount: 0, net_income: 0,
   status: 'Upcoming', clean_status: 'Needs Cleaning',
   special: '', tm30: false, booking_ref: '',
   passport_url: '', passport_number: '', passport_name: '', guest_is_thai: false,
@@ -301,13 +303,14 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
   const [passportOcrError, setPassportOcrError] = useState('')
   const [guest2PassportOcrError, setGuest2PassportOcrError] = useState('')
   const [autoFilling, setAutoFilling] = useState(false)
+  const [isExtending, setIsExtending] = useState(false)
 
   // Recalculate nights + net when dates/amounts change
   useEffect(() => {
     if (form.checkin && form.checkout) {
-      setForm(f => ({ ...f, nights: calcNights(f.checkin, f.checkout), net_income: f.gross - f.comm }))
+      setForm(f => ({ ...f, nights: calcNights(f.checkin, f.checkout), net_income: f.gross - f.comm - (f.discount ?? 0) }))
     }
-  }, [form.checkin, form.checkout, form.gross, form.comm])
+  }, [form.checkin, form.checkout, form.gross, form.comm, form.discount])
 
   function set<K extends keyof Booking>(key: K, value: Booking[K]) {
     setForm(f => {
@@ -415,8 +418,8 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     const perComm  = n > 1 ? parseFloat((form.comm  / n).toFixed(2)) : form.comm
 
     // Edit existing booking (single room only)
-    if (booking?.id) {
-      const payload = { ...form, nights: calcNights(form.checkin, form.checkout), net_income: form.gross - form.comm }
+    if (booking?.id && !isExtending) {
+      const payload = { ...form, nights: calcNights(form.checkin, form.checkout), net_income: form.gross - form.comm - (form.discount ?? 0) }
       delete (payload as { id?: number }).id
       const { error: err } = await supabase.from('bookings').update(payload).eq('id', booking.id)
       if (err) { setError(err.message); setSaving(false); return }
@@ -459,7 +462,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         type: ROOM_TYPES[room as keyof typeof ROOM_TYPES] ?? form.type,
         gross,
         comm,
-        net_income: gross - comm,
+        net_income: gross - comm - (form.discount ?? 0),
         nights: calcNights(form.checkin, form.checkout),
       }
       delete (payload as { id?: number }).id
@@ -495,6 +498,27 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     }
 
     onSaved()
+  }
+
+  // ── Extend ───────────────────────────────────────────────────────────────
+  function handleExtend() {
+    setForm(f => ({
+      ...f,
+      invoice_no: '',
+      checkin: '',
+      checkout: '',
+      nights: 0,
+      gross: 0,
+      comm: 0,
+      discount: 0,
+      net_income: 0,
+      tm30: false,
+      guest2_tm30: false,
+      tm30_url: '',
+      guest2_tm30_url: '',
+      status: 'Upcoming',
+    }))
+    setIsExtending(true)
   }
 
   // ── Delete ───────────────────────────────────────────────────────────────
@@ -541,35 +565,39 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         style={{ background: 'var(--surface)', border: '1px solid #2e2040' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 id="modal-title" className="text-lg" style={{ fontFamily: 'var(--font-dm-mono)', color: 'var(--text)' }}>
-            {booking?.id ? 'Edit Booking' : 'New Booking'}
+        <div className="flex items-center gap-3 mb-3">
+          <h2 id="modal-title" className="text-lg shrink-0" style={{ fontFamily: 'var(--font-dm-mono)', color: 'var(--text)' }}>
+            {isExtending ? 'Extend Booking' : booking?.id ? 'Edit Booking' : 'New Booking'}
           </h2>
-          <button onClick={onClose} style={{ color: 'var(--muted)', fontSize: '1.25rem', lineHeight: 1 }}>✕</button>
-        </div>
-
-        {/* ── Auto-fill from OTA screenshot ── */}
-        <div
-          className="mb-4 rounded-xl px-4 py-3 flex items-center gap-3"
-          style={{ background: 'var(--surface2)', border: '1px solid #3a2d50' }}
-        >
-          <span style={{ color: 'var(--muted)', fontSize: '0.75rem', fontFamily: 'var(--font-dm-mono)' }}>
-            {autoFilling ? '⏳ Reading screenshot…' : '📸 Auto-fill from OTA screenshot'}
-          </span>
-          {!autoFilling && (
-            <label
-              className="text-xs px-2.5 py-1 rounded-lg cursor-pointer ml-auto shrink-0"
-              style={{ background: 'var(--surface)', border: '1px solid #3a2d50', color: 'var(--text)' }}
-            >
-              Choose image
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleScreenshotAutoFill(f) }}
-              />
-            </label>
-          )}
+          <div style={{ flex: 1 }}>
+            <input
+              placeholder="Invoice No"
+              style={{ ...{
+                background: 'var(--surface2)', color: 'var(--text)',
+                border: '1px solid #3a2d50', borderRadius: '0.75rem',
+                padding: '0.35rem 0.75rem', width: '100%', fontSize: '0.8rem',
+                fontFamily: 'var(--font-dm-sans)',
+              } }}
+              value={form.invoice_no ?? ''}
+              onChange={e => set('invoice_no', e.target.value)}
+            />
+          </div>
+          {/* Compact OTA auto-fill */}
+          <div className="flex items-center gap-2 rounded-lg px-2 py-1 shrink-0"
+            style={{ background: 'var(--surface2)', border: '1px solid #3a2d50' }}>
+            <span style={{ color: 'var(--muted)', fontSize: '0.7rem' }}>
+              {autoFilling ? '⏳ Reading…' : '📸 OTA'}
+            </span>
+            {!autoFilling && (
+              <label className="text-xs px-2 py-0.5 rounded cursor-pointer"
+                style={{ background: 'var(--surface)', border: '1px solid #3a2d50', color: 'var(--text)', fontSize: '0.7rem' }}>
+                Choose image
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleScreenshotAutoFill(f) }} />
+              </label>
+            )}
+          </div>
+          <button onClick={onClose} style={{ color: 'var(--muted)', fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
@@ -720,20 +748,22 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
           {field('bm-comm', 'Commission (฿)',
             <input id="bm-comm" type="number" min={0} step="0.01" style={inputStyle} value={form.comm} onChange={e => set('comm', parseFloat(e.target.value) || 0)} />
           )}
-          {field('bm-net', 'Net Income (฿)',
-            <input id="bm-net" style={{ ...inputStyle, opacity: 0.6 }} value={form.gross - form.comm} readOnly />
+          {field('bm-discount', 'Discount (฿)',
+            <input id="bm-discount" type="number" min={0} step="0.01" style={inputStyle} value={form.discount ?? 0} onChange={e => set('discount', parseFloat(e.target.value) || 0)} />
           )}
-          {field('bm-ref', 'Booking Ref',
-            <input id="bm-ref" style={inputStyle} value={form.booking_ref} onChange={e => set('booking_ref', e.target.value)} />
+          {field('bm-net', 'Net Income (฿)',
+            <input id="bm-net" style={{ ...inputStyle, opacity: 0.6 }} value={form.gross - form.comm - (form.discount ?? 0)} readOnly />
           )}
 
-          {/* ── Clean status ── */}
+          {/* ── Clean status + Booking Ref ── */}
           {field('bm-clean', 'Clean Status',
             <select id="bm-clean" style={inputStyle} value={form.clean_status} onChange={e => set('clean_status', e.target.value)}>
               {CLEAN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <div />
+          {field('bm-ref', 'Booking Ref',
+            <input id="bm-ref" style={inputStyle} value={form.booking_ref} onChange={e => set('booking_ref', e.target.value)} />
+          )}
 
           {/* ── Special notes ── */}
           <div className="col-span-2">
@@ -746,17 +776,24 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
 
           {/* ── Actions ── */}
           <div className="col-span-2 flex items-center justify-between gap-3 pt-2">
-            {booking?.id ? (
+            {booking?.id && !isExtending ? (
               <button type="button" onClick={handleDelete} className="px-4 py-2 rounded-xl text-sm" style={{ background: 'rgba(248,113,113,0.15)', color: 'var(--red)' }}>
                 Delete
               </button>
             ) : <div />}
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
+              {booking?.id && !isExtending && (
+                <button type="button" onClick={handleExtend} className="px-4 py-2 rounded-xl text-sm font-medium"
+                  style={{ background: 'rgba(75,0,165,0.15)', color: 'var(--accent2)', border: '1px solid rgba(75,0,165,0.3)' }}>
+                  Extend
+                </button>
+              )}
               <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm" style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
                 Cancel
               </button>
-              <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
-                {saving ? (uploadStatus || 'Saving…') : booking?.id ? 'Save Changes' : 'Add Booking'}
+              <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50"
+                style={{ background: '#111', color: '#fff' }}>
+                {saving ? (uploadStatus || 'Saving…') : (isExtending ? 'Add Extension' : booking?.id ? 'Save Changes' : 'Add Booking')}
               </button>
             </div>
           </div>

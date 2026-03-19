@@ -14,6 +14,7 @@ import type { Room, Status, CleanStatus, Source } from '@/lib/constants'
 
 interface Booking {
   id: number
+  invoice_no?: string
   guest: string
   guest2: string
   room: string
@@ -25,6 +26,7 @@ interface Booking {
   source: string
   gross: number
   comm: number
+  discount?: number
   net_income: number
   status: string
   clean_status: string
