@@ -333,6 +333,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         ...(extracted.guests      && { guests: extracted.guests }),
         ...(extracted.source      && { source: extracted.source }),
         ...(extracted.gross       && { gross: extracted.gross }),
+        ...(extracted.comm        && { comm: extracted.comm }),
         ...(extracted.booking_ref && { booking_ref: extracted.booking_ref }),
         ...(extracted.special     && { special: extracted.special }),
       }))
