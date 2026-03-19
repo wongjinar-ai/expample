@@ -1,6 +1,6 @@
 # /test — Himmapun Playwright Test Runner
 
-Run this skill whenever the user wants to run tests, debug failures, or verify a milestone.
+Run this skill whenever the user wants to run tests, debug failures, or verify a milestone. Also run this skill when the user asks to "test and validate" any feature, or when new AI/OCR/extraction functionality has been added or changed.
 
 ---
 
@@ -14,8 +14,8 @@ Question 1:
 - options:
   - label: "M1 — Auth & Layout", description: "tests/m1-auth.spec.ts"
   - label: "M2 — Bookings & Cleaning", description: "tests/m2-bookings.spec.ts"
+  - label: "M4 — AI Extraction & OCR", description: "tests/m4-ai-extraction.spec.ts — passport OCR + OTA auto-fill using tests/fixtures/passport-sample.jpg"
   - label: "All suites", description: "Run every test file (npm test)"
-  - label: "Custom", description: "I'll type the file path in Other"
 
 Question 2:
 - header: "Run mode"
@@ -40,7 +40,10 @@ The `.env` file at project root holds all credentials and is auto-loaded by `pla
 Test scripts (from package.json):
 - `npm run test:m1` → `playwright test tests/m1-auth.spec.ts --headed`
 - `npm run test:m2` → `playwright test tests/m2-bookings.spec.ts --headed`
+- `npm run test:m4` → `playwright test tests/m4-ai-extraction.spec.ts --headed`
 - `npm test`        → `playwright test --headed` (all suites)
+
+M4 fixture: `tests/fixtures/passport-sample.jpg` — pre-converted JPEG, committed to repo, no conversion step needed.
 
 For headless, append `-- --headless` to override.
 

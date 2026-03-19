@@ -36,8 +36,10 @@ interface Booking {
   guest2_passport_number?: string
   guest2_passport_name?: string
   guest2_is_thai?: boolean
-  // TM30
+  // TM30 — per guest
   tm30_url?: string
+  guest2_tm30?: boolean
+  guest2_tm30_url?: string
 }
 
 const EMPTY: Booking = {
@@ -48,6 +50,7 @@ const EMPTY: Booking = {
   special: '', tm30: false, booking_ref: '',
   passport_url: '', passport_number: '', passport_name: '', guest_is_thai: false,
   guest2_passport_url: '', guest2_passport_number: '', guest2_passport_name: '', guest2_is_thai: false,
+  guest2_tm30: false, guest2_tm30_url: '',
   tm30_url: '',
 }
 
@@ -75,23 +78,23 @@ async function fileToBase64(file: File): Promise<{ data: string; mediaType: stri
   })
 }
 
-function generateTm30(form: Booking): string {
-  const lines: string[] = []
-  if (!form.guest_is_thai) {
-    lines.push(`Name: ${form.passport_name || form.guest}`)
-    if (form.passport_number) lines.push(`Passport No.: ${form.passport_number}`)
-    lines.push(`Check-in: ${form.checkin || '—'}`)
-    lines.push(`Check-out: ${form.checkout || '—'}`)
-    lines.push(`Room: ${form.room}`)
-    lines.push(`Accommodation: Himmapun Retreat, Doi Saket, Chiang Mai 50220`)
+// Re-encode any image (including HEIC) to JPEG via canvas.
+// Uses createImageBitmap which natively supports HEIC on macOS Chrome 118+.
+async function fileToJpegBase64(file: File): Promise<{ data: string; mediaType: 'image/jpeg' }> {
+  const MAX = 1500
+  const bitmap = await createImageBitmap(file)
+  let { width: w, height: h } = bitmap
+  if (w > MAX || h > MAX) {
+    if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+    else       { w = Math.round(w * MAX / h); h = MAX }
   }
-  if (!form.guest2_is_thai && form.guest2) {
-    if (lines.length) lines.push('')
-    lines.push(`--- Guest 2 ---`)
-    lines.push(`Name: ${form.guest2_passport_name || form.guest2}`)
-    if (form.guest2_passport_number) lines.push(`Passport No.: ${form.guest2_passport_number}`)
-  }
-  return lines.join('\n')
+  const canvas = document.createElement('canvas')
+  canvas.width = w; canvas.height = h
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close()
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+  const comma = dataUrl.indexOf(',')
+  return { data: dataUrl.slice(comma + 1), mediaType: 'image/jpeg' }
 }
 
 // ── Guest DOC sub-component ───────────────────────────────────────────────────
@@ -107,8 +110,31 @@ interface GuestDocProps {
   passportName: string
   onPassportNameChange: (v: string) => void
   extracting: boolean
+  ocrError?: string
+  // TM30 per guest
+  tm30Filed: boolean
+  onTm30FiledChange: (v: boolean) => void
+  tm30File: File | null
+  onTm30FileSelect: (f: File) => void
+  tm30StoredUrl?: string
   inputStyle: React.CSSProperties
   labelStyle: React.CSSProperties
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  if (!text) return null
+  return (
+    <button
+      type="button"
+      onClick={async () => { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+      className="shrink-0 px-2 py-1 rounded-lg text-xs"
+      style={{ background: copied ? 'rgba(74,222,128,0.12)' : 'var(--surface)', border: '1px solid #3a2d50', color: copied ? 'var(--green)' : 'var(--muted)' }}
+      title="Copy to clipboard"
+    >
+      {copied ? '✓' : '📋'}
+    </button>
+  )
 }
 
 function GuestDocSection({
@@ -116,7 +142,9 @@ function GuestDocSection({
   isThai, onThaiChange,
   passportNumber, onPassportNumberChange,
   passportName, onPassportNameChange,
-  extracting, inputStyle, labelStyle,
+  extracting, ocrError,
+  tm30Filed, onTm30FiledChange, tm30File, onTm30FileSelect, tm30StoredUrl,
+  inputStyle, labelStyle,
 }: GuestDocProps) {
   const [open, setOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -187,27 +215,64 @@ function GuestDocSection({
         )}
       </div>
 
+      {/* OCR error */}
+      {!isThai && ocrError && (
+        <p className="text-xs px-2 py-1 rounded-lg" style={{ color: 'var(--red)', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+          ⚠ {ocrError}
+        </p>
+      )}
+
       {/* Expanded passport details */}
       {!isThai && open && (
         <div className="rounded-xl p-3 grid gap-2" style={{ background: 'var(--surface2)', border: '1px solid #3a2d50' }}>
           <div>
             <label style={labelStyle}>Passport number</label>
-            <input
-              style={inputStyle}
-              value={passportNumber}
-              placeholder="e.g. CFL1ZGZ12"
-              onChange={e => onPassportNumberChange(e.target.value)}
-            />
+            <div className="flex gap-2 items-center">
+              <input
+                style={inputStyle}
+                value={passportNumber}
+                placeholder="e.g. CFL1ZGZ12"
+                onChange={e => onPassportNumberChange(e.target.value)}
+              />
+              <CopyButton text={passportNumber} />
+            </div>
           </div>
           <div>
             <label style={labelStyle}>Name on passport</label>
-            <input
-              style={inputStyle}
-              value={passportName}
-              placeholder="As printed on passport"
-              onChange={e => onPassportNameChange(e.target.value)}
-            />
+            <div className="flex gap-2 items-center">
+              <input
+                style={inputStyle}
+                value={passportName}
+                placeholder="As printed on passport"
+                onChange={e => onPassportNameChange(e.target.value)}
+              />
+              <CopyButton text={passportName} />
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* TM30 per guest */}
+      {!isThai && (
+        <div className="flex items-center gap-3 flex-wrap pt-1">
+          <label className="flex items-center gap-1.5 cursor-pointer shrink-0" style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+            <input
+              type="checkbox"
+              checked={tm30Filed}
+              onChange={e => onTm30FiledChange(e.target.checked)}
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            TM30 filed
+          </label>
+          <label className="text-xs px-2.5 py-1 rounded-lg cursor-pointer shrink-0" style={{ background: tm30File ? 'rgba(74,222,128,0.12)' : 'var(--surface2)', color: tm30File ? 'var(--green)' : 'var(--muted)', border: `1px solid ${tm30File ? 'rgba(74,222,128,0.3)' : '#3a2d50'}` }}>
+            {tm30File ? `✓ ${tm30File.name.slice(0, 14)}…` : tm30StoredUrl ? '📄 Replace PDF' : '📄 TM30 PDF'}
+            <input type="file" accept="application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onTm30FileSelect(f) }} />
+          </label>
+          {tm30StoredUrl && !tm30File && (
+            <button type="button" onClick={() => onViewFile(tm30StoredUrl)} className="text-xs px-2 py-1 rounded-lg shrink-0" style={{ background: 'rgba(75,0,165,0.15)', color: 'var(--accent2)', border: '1px solid rgba(75,0,165,0.3)' }}>
+              View
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -225,15 +290,14 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
   const [passportFile, setPassportFile] = useState<File | null>(null)
   const [guest2PassportFile, setGuest2PassportFile] = useState<File | null>(null)
   const [tm30File, setTm30File] = useState<File | null>(null)
+  const [guest2Tm30File, setGuest2Tm30File] = useState<File | null>(null)
 
   // OCR state
   const [passportExtracting, setPassportExtracting] = useState(false)
   const [guest2PassportExtracting, setGuest2PassportExtracting] = useState(false)
+  const [passportOcrError, setPassportOcrError] = useState('')
+  const [guest2PassportOcrError, setGuest2PassportOcrError] = useState('')
   const [autoFilling, setAutoFilling] = useState(false)
-
-  // TM30 message (editable)
-  const [tm30Message, setTm30Message] = useState(() => generateTm30(booking ?? EMPTY))
-  const [copied, setCopied] = useState(false)
 
   // Recalculate nights + net when dates/amounts change
   useEffect(() => {
@@ -241,16 +305,6 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
       setForm(f => ({ ...f, nights: calcNights(f.checkin, f.checkout), net_income: f.gross - f.comm }))
     }
   }, [form.checkin, form.checkout, form.gross, form.comm])
-
-  // Regenerate TM30 message when relevant fields change
-  useEffect(() => {
-    setTm30Message(generateTm30(form))
-  }, [
-    form.guest, form.guest2, form.guest_is_thai, form.guest2_is_thai,
-    form.passport_name, form.passport_number,
-    form.guest2_passport_name, form.guest2_passport_number,
-    form.checkin, form.checkout, form.room,
-  ])
 
   function set<K extends keyof Booking>(key: K, value: Booking[K]) {
     setForm(f => {
@@ -290,34 +344,35 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
 
   // ── Passport OCR ─────────────────────────────────────────────────────────
   async function handlePassportSelect(file: File, guest: 1 | 2) {
-    if (guest === 1) { setPassportFile(file); setPassportExtracting(true) }
-    else { setGuest2PassportFile(file); setGuest2PassportExtracting(true) }
+    if (guest === 1) { setPassportFile(file); setPassportExtracting(true); setPassportOcrError('') }
+    else { setGuest2PassportFile(file); setGuest2PassportExtracting(true); setGuest2PassportOcrError('') }
 
     try {
-      const { data, mediaType } = await fileToBase64(file)
-      if (mediaType.startsWith('image/')) {
-        const res = await fetch('/api/extract-passport', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: data, mediaType }),
-        })
-        const extracted = await res.json()
-        if (guest === 1) {
-          setForm(f => ({
-            ...f,
-            ...(extracted.name && { passport_name: extracted.name }),
-            ...(extracted.passport_number && { passport_number: extracted.passport_number }),
-          }))
-        } else {
-          setForm(f => ({
-            ...f,
-            ...(extracted.name && { guest2_passport_name: extracted.name }),
-            ...(extracted.passport_number && { guest2_passport_number: extracted.passport_number }),
-          }))
-        }
+      const { data, mediaType } = await fileToJpegBase64(file)
+      const res = await fetch('/api/extract-passport', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: data, mediaType }),
+      })
+      const extracted = await res.json()
+      if (guest === 1) {
+        setForm(f => ({
+          ...f,
+          ...(extracted.name && { passport_name: extracted.name }),
+          ...(extracted.passport_number && { passport_number: extracted.passport_number }),
+        }))
+      } else {
+        setForm(f => ({
+          ...f,
+          ...(extracted.name && { guest2_passport_name: extracted.name }),
+          ...(extracted.passport_number && { guest2_passport_number: extracted.passport_number }),
+        }))
       }
     } catch (e) {
       console.error('Passport OCR failed:', e)
+      const msg = e instanceof Error ? e.message : 'Could not read image. Try a JPEG or PNG.'
+      if (guest === 1) setPassportOcrError(msg)
+      else setGuest2PassportOcrError(msg)
     }
 
     if (guest === 1) setPassportExtracting(false)
@@ -358,7 +413,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
       bookingId = data.id
     }
 
-    if (bookingId && (passportFile || guest2PassportFile || tm30File)) {
+    if (bookingId && (passportFile || guest2PassportFile || tm30File || guest2Tm30File)) {
       setUploadStatus('Uploading files…')
       const updates: Partial<Booking> = {}
       if (passportFile) {
@@ -373,6 +428,10 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         const path = await uploadFile(supabase, bookingId, tm30File, 'tm30')
         if (path) updates.tm30_url = path
       }
+      if (guest2Tm30File) {
+        const path = await uploadFile(supabase, bookingId, guest2Tm30File, 'tm30_guest2')
+        if (path) updates.guest2_tm30_url = path
+      }
       if (Object.keys(updates).length > 0) {
         await supabase.from('bookings').update(updates).eq('id', bookingId)
       }
@@ -386,7 +445,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     if (!booking?.id) return
     if (!confirm('Delete this booking?')) return
     const supabase = createClient()
-    const toRemove = [booking.passport_url, booking.tm30_url, booking.guest2_passport_url].filter(Boolean) as string[]
+    const toRemove = [booking.passport_url, booking.tm30_url, booking.guest2_passport_url, booking.guest2_tm30_url].filter(Boolean) as string[]
     if (toRemove.length > 0) await supabase.storage.from(BUCKET).remove(toRemove)
     await supabase.from('bookings').delete().eq('id', booking.id)
     onSaved()
@@ -396,12 +455,6 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     const supabase = createClient()
     const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-  }
-
-  async function copyTm30() {
-    await navigator.clipboard.writeText(tm30Message)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   const inputStyle: React.CSSProperties = {
@@ -419,8 +472,6 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
       {el}
     </div>
   )
-
-  const showTm30Message = !form.guest_is_thai || (!form.guest2_is_thai && !!form.guest2)
 
   return (
     <div
@@ -487,6 +538,12 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             passportName={form.passport_name ?? ''}
             onPassportNameChange={v => set('passport_name', v)}
             extracting={passportExtracting}
+            ocrError={passportOcrError}
+            tm30Filed={!!form.tm30}
+            onTm30FiledChange={v => set('tm30', v)}
+            tm30File={tm30File}
+            onTm30FileSelect={f => setTm30File(f)}
+            tm30StoredUrl={form.tm30_url || undefined}
             inputStyle={inputStyle}
             labelStyle={labelStyle}
           />
@@ -504,6 +561,12 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             passportName={form.guest2_passport_name ?? ''}
             onPassportNameChange={v => set('guest2_passport_name', v)}
             extracting={guest2PassportExtracting}
+            ocrError={guest2PassportOcrError}
+            tm30Filed={!!form.guest2_tm30}
+            onTm30FiledChange={v => set('guest2_tm30', v)}
+            tm30File={guest2Tm30File}
+            onTm30FileSelect={f => setGuest2Tm30File(f)}
+            tm30StoredUrl={form.guest2_tm30_url || undefined}
             inputStyle={inputStyle}
             labelStyle={labelStyle}
           />
@@ -560,16 +623,13 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             <input id="bm-ref" style={inputStyle} value={form.booking_ref} onChange={e => set('booking_ref', e.target.value)} />
           )}
 
-          {/* ── Clean status & TM30 checkbox ── */}
+          {/* ── Clean status ── */}
           {field('bm-clean', 'Clean Status',
             <select id="bm-clean" style={inputStyle} value={form.clean_status} onChange={e => set('clean_status', e.target.value)}>
               {CLEAN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <div className="flex items-center gap-2" style={{ paddingTop: '1.25rem' }}>
-            <input type="checkbox" id="bm-tm30" checked={form.tm30} onChange={e => set('tm30', e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-            <label htmlFor="bm-tm30" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>TM30 filed</label>
-          </div>
+          <div />
 
           {/* ── Special notes ── */}
           <div className="col-span-2">
@@ -577,57 +637,7 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
             <textarea id="bm-special" rows={2} style={{ ...inputStyle, resize: 'vertical' }} value={form.special} onChange={e => set('special', e.target.value)} />
           </div>
 
-          {/* ── TM30 registration message ── */}
-          {showTm30Message && (
-            <div className="col-span-2">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>
-                  TM30 Registration Info
-                </p>
-                <button
-                  type="button"
-                  onClick={copyTm30}
-                  className="text-xs px-2.5 py-1 rounded-lg"
-                  style={{
-                    background: copied ? 'rgba(74,222,128,0.15)' : 'var(--surface2)',
-                    color: copied ? 'var(--green)' : 'var(--muted)',
-                    border: '1px solid #3a2d50',
-                  }}
-                >
-                  {copied ? '✓ Copied!' : '📋 Copy'}
-                </button>
-              </div>
-              <textarea
-                rows={form.guest2 && !form.guest2_is_thai ? 8 : 6}
-                style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-dm-mono)', fontSize: '0.75rem', lineHeight: 1.6 }}
-                value={tm30Message}
-                onChange={e => setTm30Message(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* ── TM30 PDF ── */}
-          <div className="col-span-2">
-            <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--muted)', fontFamily: 'var(--font-dm-mono)' }}>TM30 PDF</p>
-            <div className="rounded-xl p-3 flex items-center gap-2 flex-wrap" style={{ background: 'var(--surface2)', border: '1px solid #3a2d50' }}>
-              {form.tm30_url && (
-                <button type="button" onClick={() => openFile(form.tm30_url!)} className="text-xs px-2.5 py-1 rounded-lg" style={{ background: 'rgba(75,0,165,0.15)', color: 'var(--accent2)', border: '1px solid rgba(75,0,165,0.3)' }}>
-                  View TM30
-                </button>
-              )}
-              <label className="text-xs px-2.5 py-1 rounded-lg cursor-pointer" style={{ background: 'var(--surface)', border: '1px solid #3a2d50', color: 'var(--text)' }}>
-                {form.tm30_url ? 'Replace PDF' : 'Upload PDF'}
-                <input type="file" accept="application/pdf" className="hidden" onChange={e => setTm30File(e.target.files?.[0] ?? null)} />
-              </label>
-              {tm30File
-                ? <span className="text-xs truncate max-w-[12rem]" style={{ color: 'var(--green)' }}>✓ {tm30File.name}</span>
-                : !form.tm30_url
-                  ? <span className="text-xs" style={{ color: 'var(--muted)' }}>No file</span>
-                  : null}
-            </div>
-          </div>
-
-          {error && <p className="col-span-2 text-sm" style={{ color: 'var(--red)' }}>{error}</p>}
+          {error &&<p className="col-span-2 text-sm" style={{ color: 'var(--red)' }}>{error}</p>}
           {uploadStatus && <p className="col-span-2 text-xs" style={{ color: 'var(--muted)' }}>{uploadStatus}</p>}
 
           {/* ── Actions ── */}

@@ -18,10 +18,10 @@ export default function LoginPage() {
     setError('')
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      setError(error.message)
+    if (authError) {
+      setError(authError.message)
       setLoading(false)
     } else {
       router.push('/dashboard')
@@ -29,36 +29,44 @@ export default function LoginPage() {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    fontSize: '13px',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: '0.5px solid var(--border2)',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    outline: 'none',
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg)' }}>
-      <div className="w-full max-w-sm">
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'var(--surface)' }}>
+      <div style={{ width: '100%', maxWidth: '360px' }}>
 
         {/* Logo */}
-        <div className="mb-8 text-center">
-          <div
-            className="inline-block rounded-2xl overflow-hidden mb-3"
-            style={{ width: '160px', background: 'var(--accent)' }}
-          >
+        <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+          <div style={{ display: 'inline-block', borderRadius: '12px', overflow: 'hidden', width: '120px', marginBottom: '12px' }}>
             <Image
               src="/himmapun-logo.png"
               alt="Himmapun Retreat"
-              width={160}
-              height={160}
+              width={120}
+              height={120}
               priority
             />
           </div>
-          <p className="text-xs uppercase tracking-widest" style={{ color: 'var(--accent2)', fontFamily: 'var(--font-dm-mono)' }}>
+          <p style={{ fontSize: '12px', color: 'var(--muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Simple Natural Living
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid #2e2040' }}>
-          <h2 className="text-lg font-medium mb-6" style={{ color: 'var(--text)', fontFamily: 'var(--font-dm-mono)' }}>Sign in</h2>
+        <div style={{ background: 'var(--bg)', border: '0.5px solid var(--border2)', borderRadius: '8px', padding: '24px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 500, color: 'var(--text)', marginBottom: '20px' }}>Sign in</h2>
 
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="email" className="text-sm" style={{ color: 'var(--muted)' }}>Email</label>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor="email" style={{ fontSize: '12px', color: 'var(--muted)' }}>Email</label>
               <input
                 id="email"
                 type="email"
@@ -66,19 +74,12 @@ export default function LoginPage() {
                 onChange={e => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2"
-                style={{
-                  background: 'var(--surface2)',
-                  color: 'var(--text)',
-                  border: '1px solid #3a2d50',
-                  // @ts-expect-error css var
-                  '--tw-ring-color': 'var(--accent2)',
-                }}
+                style={inputStyle}
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="password" className="text-sm" style={{ color: 'var(--muted)' }}>Password</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor="password" style={{ fontSize: '12px', color: 'var(--muted)' }}>Password</label>
               <input
                 id="password"
                 type="password"
@@ -86,31 +87,37 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2"
-                style={{
-                  background: 'var(--surface2)',
-                  color: 'var(--text)',
-                  border: '1px solid #3a2d50',
-                }}
+                style={inputStyle}
               />
             </div>
 
             {error && (
-              <p className="text-sm" style={{ color: 'var(--red)' }}>{error}</p>
+              <p style={{ fontSize: '12px', color: 'var(--red)' }}>{error}</p>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl py-2.5 text-sm font-semibold mt-2 transition-opacity disabled:opacity-50 tracking-wide"
-              style={{ background: 'var(--accent)', color: '#ffffff' }}
+              style={{
+                width: '100%',
+                fontSize: '13px',
+                padding: '9px',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'var(--text)',
+                color: 'var(--bg)',
+                fontWeight: 500,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+                marginTop: '4px',
+              }}
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         </div>
 
-        <p className="text-center mt-4 text-xs" style={{ color: 'var(--muted)' }}>
+        <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '12px', color: 'var(--muted)' }}>
           Doi Saket, Chiang Mai
         </p>
       </div>

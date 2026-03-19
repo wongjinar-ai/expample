@@ -33,22 +33,22 @@ test.describe('M1 — Auth & Layout', () => {
     await page.getByLabel('Password').fill(PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/)
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByRole('img', { name: 'Himmapun' })).toBeVisible()
+    await expect(page.getByText('Himmapun Retreat').first()).toBeVisible()
+    await expect(page.getByText('Rooms occupied').first()).toBeVisible()
     await page.screenshot({ path: 'test-results/screenshots/04-dashboard.png', fullPage: true })
   })
 
-  test('sidebar nav links are all present', async ({ page }) => {
+  test('top nav tabs are all present', async ({ page }) => {
     await page.goto('/login')
     await page.getByLabel('Email').fill(EMAIL)
     await page.getByLabel('Password').fill(PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/dashboard/)
 
-    for (const label of ['Dashboard', 'Day Guest', 'Bookings', 'Cleaning', 'Shifts', 'Monthly']) {
+    for (const label of ['Dashboard', 'Rooms & guests', 'Income & OTA', 'Cleaning plan', 'Staff shifts']) {
       await expect(page.getByText(label).first()).toBeVisible()
     }
-    await page.screenshot({ path: 'test-results/screenshots/05-sidebar.png', fullPage: true })
+    await page.screenshot({ path: 'test-results/screenshots/05-tabs.png', fullPage: true })
   })
 
   test('sign out returns to /login', async ({ page }) => {
