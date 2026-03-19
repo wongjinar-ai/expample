@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ROOMS, ROOM_TYPES, SOURCES, STATUSES, CLEAN_STATUSES } from '@/lib/constants'
 import { calcNights } from '@/lib/helpers'
@@ -292,6 +292,9 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
   const [tm30File, setTm30File] = useState<File | null>(null)
   const [guest2Tm30File, setGuest2Tm30File] = useState<File | null>(null)
 
+  // Multi-room state (for bookings with >1 unit)
+  const [additionalRooms, setAdditionalRooms] = useState<string[]>([])
+
   // OCR state
   const [passportExtracting, setPassportExtracting] = useState(false)
   const [guest2PassportExtracting, setGuest2PassportExtracting] = useState(false)
@@ -337,6 +340,10 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         ...(extracted.booking_ref && { booking_ref: extracted.booking_ref }),
         ...(extracted.special     && { special: extracted.special }),
       }))
+      // If multiple units, pre-populate additional room selectors
+      if (extracted.units && extracted.units > 1) {
+        setAdditionalRooms(Array(extracted.units - 1).fill(''))
+      }
     } catch (e) {
       console.error('Auto-fill failed:', e)
     }
@@ -400,41 +407,90 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
     setSaving(true)
     setError('')
     const supabase = createClient()
-    const payload = { ...form, nights: calcNights(form.checkin, form.checkout), net_income: form.gross - form.comm }
-    delete (payload as { id?: number }).id
 
-    let bookingId = booking?.id
+    // Multi-room: split gross/comm evenly across all rooms
+    const allRooms = [form.room, ...additionalRooms.filter(Boolean)]
+    const n = allRooms.length
+    const perGross = n > 1 ? parseFloat((form.gross / n).toFixed(2)) : form.gross
+    const perComm  = n > 1 ? parseFloat((form.comm  / n).toFixed(2)) : form.comm
 
+    // Edit existing booking (single room only)
     if (booking?.id) {
+      const payload = { ...form, nights: calcNights(form.checkin, form.checkout), net_income: form.gross - form.comm }
+      delete (payload as { id?: number }).id
       const { error: err } = await supabase.from('bookings').update(payload).eq('id', booking.id)
       if (err) { setError(err.message); setSaving(false); return }
-    } else {
-      const { data, error: err } = await supabase.from('bookings').insert(payload).select('id').single()
-      if (err) { setError(err.message); setSaving(false); return }
-      bookingId = data.id
+
+      if (passportFile || guest2PassportFile || tm30File || guest2Tm30File) {
+        setUploadStatus('Uploading files…')
+        const updates: Partial<Booking> = {}
+        if (passportFile) {
+          const path = await uploadFile(supabase, booking.id, passportFile, 'passport')
+          if (path) { updates.passport_url = path; updates.passport_uploaded_at = new Date().toISOString() }
+        }
+        if (guest2PassportFile) {
+          const path = await uploadFile(supabase, booking.id, guest2PassportFile, 'passport2')
+          if (path) { updates.guest2_passport_url = path; updates.guest2_passport_uploaded_at = new Date().toISOString() }
+        }
+        if (tm30File) {
+          const path = await uploadFile(supabase, booking.id, tm30File, 'tm30')
+          if (path) updates.tm30_url = path
+        }
+        if (guest2Tm30File) {
+          const path = await uploadFile(supabase, booking.id, guest2Tm30File, 'tm30_guest2')
+          if (path) updates.guest2_tm30_url = path
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('bookings').update(updates).eq('id', booking.id)
+        }
+      }
+      onSaved()
+      return
     }
 
-    if (bookingId && (passportFile || guest2PassportFile || tm30File || guest2Tm30File)) {
-      setUploadStatus('Uploading files…')
-      const updates: Partial<Booking> = {}
-      if (passportFile) {
-        const path = await uploadFile(supabase, bookingId, passportFile, 'passport')
-        if (path) { updates.passport_url = path; updates.passport_uploaded_at = new Date().toISOString() }
+    // New booking — create one row per room
+    for (let i = 0; i < allRooms.length; i++) {
+      const room = allRooms[i]
+      const gross = perGross
+      const comm  = perComm
+      const payload = {
+        ...form,
+        room,
+        type: ROOM_TYPES[room as keyof typeof ROOM_TYPES] ?? form.type,
+        gross,
+        comm,
+        net_income: gross - comm,
+        nights: calcNights(form.checkin, form.checkout),
       }
-      if (guest2PassportFile) {
-        const path = await uploadFile(supabase, bookingId, guest2PassportFile, 'passport2')
-        if (path) { updates.guest2_passport_url = path; updates.guest2_passport_uploaded_at = new Date().toISOString() }
-      }
-      if (tm30File) {
-        const path = await uploadFile(supabase, bookingId, tm30File, 'tm30')
-        if (path) updates.tm30_url = path
-      }
-      if (guest2Tm30File) {
-        const path = await uploadFile(supabase, bookingId, guest2Tm30File, 'tm30_guest2')
-        if (path) updates.guest2_tm30_url = path
-      }
-      if (Object.keys(updates).length > 0) {
-        await supabase.from('bookings').update(updates).eq('id', bookingId)
+      delete (payload as { id?: number }).id
+
+      const { data, error: err } = await supabase.from('bookings').insert(payload).select('id').single()
+      if (err) { setError(err.message); setSaving(false); return }
+      const bookingId = data.id
+
+      // Only upload docs for the first room
+      if (i === 0 && (passportFile || guest2PassportFile || tm30File || guest2Tm30File)) {
+        setUploadStatus('Uploading files…')
+        const updates: Partial<Booking> = {}
+        if (passportFile) {
+          const path = await uploadFile(supabase, bookingId, passportFile, 'passport')
+          if (path) { updates.passport_url = path; updates.passport_uploaded_at = new Date().toISOString() }
+        }
+        if (guest2PassportFile) {
+          const path = await uploadFile(supabase, bookingId, guest2PassportFile, 'passport2')
+          if (path) { updates.guest2_passport_url = path; updates.guest2_passport_uploaded_at = new Date().toISOString() }
+        }
+        if (tm30File) {
+          const path = await uploadFile(supabase, bookingId, tm30File, 'tm30')
+          if (path) updates.tm30_url = path
+        }
+        if (guest2Tm30File) {
+          const path = await uploadFile(supabase, bookingId, guest2Tm30File, 'tm30_guest2')
+          if (path) updates.guest2_tm30_url = path
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('bookings').update(updates).eq('id', bookingId)
+        }
       }
     }
 
@@ -573,13 +629,60 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
           />
 
           {/* ── Room & Type ── */}
-          {field('bm-room', 'Room *',
+          {field('bm-room', `Room 1 *`,
             <select id="bm-room" style={inputStyle} value={form.room} onChange={e => set('room', e.target.value)} required>
               {ROOMS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
           {field('bm-type', 'Type',
             <input id="bm-type" style={{ ...inputStyle, opacity: 0.6 }} value={form.type} readOnly />
+          )}
+
+          {/* ── Additional rooms (multi-unit bookings) ── */}
+          {additionalRooms.map((r, i) => (
+            <React.Fragment key={i}>
+              {field(`bm-room-${i + 2}`, `Room ${i + 2} *`,
+                <div className="flex gap-2">
+                  <select
+                    id={`bm-room-${i + 2}`}
+                    style={inputStyle}
+                    value={r}
+                    onChange={e => { const next = [...additionalRooms]; next[i] = e.target.value; setAdditionalRooms(next) }}
+                    required
+                  >
+                    <option value="">Select room…</option>
+                    {ROOMS.map(room => <option key={room} value={room}>{room}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAdditionalRooms(additionalRooms.filter((_, j) => j !== i))}
+                    style={{ background: 'rgba(248,113,113,0.12)', color: 'var(--red)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '0.75rem', padding: '0 0.75rem', flexShrink: 0 }}
+                  >×</button>
+                </div>
+              )}
+              {field('', 'Type',
+                <input style={{ ...inputStyle, opacity: 0.6 }} value={r ? (ROOM_TYPES[r as keyof typeof ROOM_TYPES] ?? '') : ''} readOnly />
+              )}
+            </React.Fragment>
+          ))}
+
+          {/* Add room button — only for new bookings */}
+          {!booking?.id && (
+            <div className="col-span-2">
+              <button
+                type="button"
+                onClick={() => setAdditionalRooms([...additionalRooms, ''])}
+                className="text-xs px-3 py-1.5 rounded-lg"
+                style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid #3a2d50' }}
+              >
+                + Add another room
+              </button>
+              {additionalRooms.length > 0 && (
+                <span className="text-xs ml-3" style={{ color: 'var(--muted)' }}>
+                  Gross &amp; commission will be split equally across {additionalRooms.length + 1} rooms
+                </span>
+              )}
+            </div>
           )}
 
           {/* ── Dates ── */}

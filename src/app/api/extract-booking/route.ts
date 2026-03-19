@@ -27,13 +27,14 @@ export async function POST(request: Request) {
   "checkin": "YYYY-MM-DD",
   "checkout": "YYYY-MM-DD",
   "guests": 1,
+  "units": 1,
   "source": "Booking.com|Agoda|Airbnb|Direct|Other",
   "gross": 0,
   "comm": 0,
   "booking_ref": "confirmation number",
   "special": "special requests if any"
 }
-For "gross": the total room price paid by the guest. For "comm": the OTA commission/service fee deducted (shown as "commission", "service fee", "OTA fee", etc.) — use 0 if not shown. Use "" for unknown strings, 0 for unknown numbers. Dates must be YYYY-MM-DD. Return ONLY the JSON object.`,
+For "gross": the TOTAL price paid by the guest across all units. For "comm": the total OTA commission/service fee deducted. For "units": number of rooms/units booked (look for "Total units", "2 rooms", etc.) — default 1. Use "" for unknown strings, 0 for unknown numbers. Dates must be YYYY-MM-DD. Return ONLY the JSON object.`,
           },
         ],
       }],
