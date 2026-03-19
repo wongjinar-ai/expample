@@ -206,6 +206,7 @@ function DashboardTab() {
 
   // Weekly grid
   const monday = getMondayOfWeek(todayStr)
+  const sundayStr = addDays(monday, 6)
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const dateStr = addDays(monday, i)
     const occ = OCC_ROOMS.filter(room =>
@@ -214,9 +215,30 @@ function DashboardTab() {
     return { dateStr, day: getDayName(dateStr), occ }
   })
 
-  // Source breakdown
+  // Week occupancy rate
+  const weekOccRoomDays = weekDays.reduce((total, { occ }) => total + occ, 0)
+  const weekOccPct = Math.round(weekOccRoomDays / 70 * 100)
+
+  // Month occupancy rate (denominator = 300 per business rules)
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+  let monthOccRoomDays = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayStr = `${thisMonth}-${String(d).padStart(2, '0')}`
+    monthOccRoomDays += OCC_ROOMS.filter(room =>
+      bookings.some(b => b.room === room && isStayingOn(b, dayStr))
+    ).length
+  }
+  const monthOccPct = Math.round(monthOccRoomDays / 300 * 100)
+
+  // Weekly income (bookings checking in this week Mon–Sun)
+  const weeklyBookings = bookings.filter(b => b.checkin >= monday && b.checkin <= sundayStr)
+  const weekGross = weeklyBookings.reduce((s, b) => s + b.gross, 0)
+  const weekComm  = weeklyBookings.reduce((s, b) => s + b.comm, 0)
+  const weekNet   = weekGross - weekComm
+
+  // Source breakdown (weekly)
   const srcCount: Record<string, number> = { Direct: 0, 'Booking.com': 0, Agoda: 0, Airbnb: 0 }
-  activeBookings.forEach(b => {
+  weeklyBookings.forEach(b => {
     if (b.source in srcCount) srcCount[b.source]++
   })
 
@@ -265,8 +287,27 @@ function DashboardTab() {
         ))}
       </div>
 
-      {/* Check-out / Check-in today */}
+      {/* Check-in / Check-out today — Check-in first */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1rem' }}>
+        {/* Checking in */}
+        <div style={{ ...CARD, borderLeft: '3px solid #3B6D11', borderRadius: '0 8px 8px 0', marginBottom: 0 }}>
+          <div style={{ ...SECTION_LABEL, color: '#3B6D11' }}>Checking in today</div>
+          {checkInsToday.length === 0
+            ? <p style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>No check-ins today</p>
+            : checkInsToday.map(b => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: '0.5px solid var(--border)' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#EAF3DE', color: '#3B6D11', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 500, flexShrink: 0 }}>
+                  {initials(b.guest)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{b.guest}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{b.room} · {b.type} · {b.guests} guest{b.guests !== 1 ? 's' : ''}</div>
+                </div>
+                <button onClick={() => openEdit(b.id)} style={{ ...ACTION_BTN, padding: '3px 8px', fontSize: '11px' }}>Edit</button>
+              </div>
+            ))}
+        </div>
+
         {/* Checking out */}
         <div style={{ ...CARD, borderLeft: '3px solid #BA7517', borderRadius: '0 8px 8px 0', marginBottom: 0 }}>
           <div style={{ ...SECTION_LABEL, color: '#BA7517' }}>Checking out today</div>
@@ -282,30 +323,6 @@ function DashboardTab() {
                   <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{b.room} · {b.type}</div>
                 </div>
                 <StatusBadge status={b.status as Status} />
-              </div>
-            ))}
-        </div>
-
-        {/* Checking in */}
-        <div style={{ ...CARD, borderLeft: '3px solid #3B6D11', borderRadius: '0 8px 8px 0', marginBottom: 0 }}>
-          <div style={{ ...SECTION_LABEL, color: '#3B6D11' }}>Checking in today</div>
-          {checkInsToday.length === 0
-            ? <p style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>No check-ins today</p>
-            : checkInsToday.map(b => (
-              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: '0.5px solid var(--border)' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#EAF3DE', color: '#3B6D11', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 500, flexShrink: 0 }}>
-                  {initials(b.guest)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{b.guest}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{b.room} · {b.type} · {b.guests} guest{b.guests !== 1 ? 's' : ''}</div>
-                </div>
-                <button
-                  onClick={() => openEdit(b.id)}
-                  style={{ ...ACTION_BTN, padding: '3px 8px', fontSize: '11px' }}
-                >
-                  Edit
-                </button>
               </div>
             ))}
         </div>
@@ -347,10 +364,16 @@ function DashboardTab() {
         </div>
       )}
 
-      {/* Weekly grid + income summary */}
+      {/* Weekly grid + weekly income summary */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1rem' }}>
         <div style={CARD}>
-          <div style={SECTION_LABEL}>Daily occupancy this week</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+            <div style={SECTION_LABEL}>Occupancy this week</div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Week: <strong style={{ color: '#185FA5' }}>{weekOccPct}%</strong></span>
+              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Month: <strong style={{ color: '#185FA5' }}>{monthOccPct}%</strong></span>
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '6px' }}>
             {weekDays.map(({ dateStr, day, occ }) => {
               const isToday = dateStr === todayStr
@@ -366,61 +389,86 @@ function DashboardTab() {
         </div>
 
         <div style={CARD}>
-          <div style={SECTION_LABEL}>Income summary</div>
-          {incomeRow('Gross revenue', fmtMoney(grossTotal), '#3B6D11')}
-          {incomeRow('OTA commission', `−${fmtMoney(commTotal)}`, '#A32D2D')}
-          {incomeRow('Net income', fmtMoney(netTotal), '#185FA5', true)}
+          <div style={SECTION_LABEL}>Weekly income summary — {fmtDate(monday)} to {fmtDate(sundayStr)}</div>
+          {incomeRow('Gross revenue', fmtMoney(weekGross), '#3B6D11')}
+          {incomeRow('OTA commission', `−${fmtMoney(weekComm)}`, '#A32D2D')}
+          {incomeRow('Net income', fmtMoney(weekNet), '#185FA5', true)}
           <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
             {Object.entries(srcCount).map(([src, cnt]) => (
               <div key={src} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                 <span style={{ fontSize: '12px' }}>{src}</span>
-                <span style={{ fontSize: '12px', fontWeight: 500 }}>{cnt} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>rm</span></span>
+                <span style={{ fontSize: '12px', fontWeight: 500 }}>{cnt} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>bk</span></span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Occupancy by room dots */}
+      {/* Occupancy by room — full week grid (Mon–Sun) */}
       <div style={CARD}>
-        <div style={SECTION_LABEL}>Occupancy by room — each circle = 1 guest</div>
-        {OCC_ROOMS.map(room => {
-          const booking = bookings.find(b => b.room === room && isStayingOn(b, todayStr))
-          const type = ROOM_TYPES[room as Room]
-          const cap = MAX_CAP[type] ?? 2
-          const guestCount = booking ? booking.guests : 0
-          const isVacant = !booking
-          const isCheckout = booking?.status === 'Checkout'
-          const isCheckin = booking?.checkin === todayStr
-
-          return (
-            <div key={room} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: '0.5px solid var(--border)' }}>
-              <div style={{ fontSize: '13px', fontWeight: 500, width: '80px', flexShrink: 0 }}>{room}</div>
-              <div style={{ fontSize: '11px', color: 'var(--muted)', width: '54px', flexShrink: 0 }}>{type}</div>
-              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1 }}>
-                {Array.from({ length: cap }, (_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: '13px', height: '13px', borderRadius: '50%', flexShrink: 0,
-                      background: i < guestCount ? '#378ADD' : 'var(--surface)',
-                      border: i < guestCount ? 'none' : '0.5px solid var(--border2)',
-                    }}
-                  />
+        <div style={SECTION_LABEL}>Occupancy by room — {fmtDate(monday)} to {fmtDate(sundayStr)}</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <thead>
+              <tr>
+                <th style={{ ...TH, width: '80px', textAlign: 'left' }}>Room</th>
+                <th style={{ ...TH, width: '52px', textAlign: 'left' }}>Type</th>
+                {weekDays.map(({ dateStr, day }) => (
+                  <th key={dateStr} style={{ ...TH, textAlign: 'center', background: dateStr === todayStr ? '#EFF6FF' : undefined }}>
+                    <div style={{ fontWeight: 500 }}>{day}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 400 }}>{dateStr.slice(5)}</div>
+                  </th>
                 ))}
-                <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: '6px' }}>
-                  {isVacant
-                    ? <em>Vacant</em>
-                    : isCheckout
-                    ? <span style={{ color: '#BA7517' }}>Checkout · {booking?.guest}</span>
-                    : isCheckin
-                    ? <span style={{ color: '#3B6D11' }}>Arriving · {booking?.guest}</span>
-                    : `${guestCount} guest${guestCount !== 1 ? 's' : ''} · ${booking?.guest}`}
-                </span>
-              </div>
+              </tr>
+            </thead>
+            <tbody>
+              {OCC_ROOMS.map(room => (
+                <tr key={room} onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={{ ...TD, fontWeight: 500 }}>{room}</td>
+                  <td style={{ ...TD, color: 'var(--muted)', fontSize: '11px' }}>{ROOM_TYPES[room as Room]}</td>
+                  {weekDays.map(({ dateStr }) => {
+                    const b = bookings.find(bk => bk.room === room && isStayingOn(bk, dateStr))
+                    const isToday = dateStr === todayStr
+                    const isCheckout = b?.status === 'Checkout'
+                    const isCheckin = b?.checkin === dateStr
+                    const cellBg = !b ? undefined
+                      : isCheckout ? '#FEF3C7'
+                      : isCheckin  ? '#DCFCE7'
+                      : '#DBEAFE'
+                    const cellColor = !b ? 'var(--muted)'
+                      : isCheckout ? '#92400E'
+                      : isCheckin  ? '#166534'
+                      : '#1E40AF'
+                    return (
+                      <td key={dateStr} style={{ ...TD, textAlign: 'center', padding: '5px 3px', background: isToday ? '#EFF6FF' : undefined }}>
+                        {b ? (
+                          <div style={{ background: cellBg, color: cellColor, borderRadius: '4px', padding: '3px 2px', fontSize: '10px', fontWeight: 500, lineHeight: 1.3 }}>
+                            {initials(b.guest)}
+                          </div>
+                        ) : (
+                          <div style={{ width: '100%', height: '24px', borderRadius: '4px', background: 'var(--bg)', border: '0.5px solid var(--border)' }} />
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: '16px', marginTop: '10px', flexWrap: 'wrap' }}>
+          {[
+            { bg: '#DBEAFE', color: '#1E40AF', label: 'Occupied' },
+            { bg: '#DCFCE7', color: '#166534', label: 'Check-in' },
+            { bg: '#FEF3C7', color: '#92400E', label: 'Checkout' },
+          ].map(({ bg, color, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '14px', height: '14px', borderRadius: '3px', background: bg }} />
+              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{label}</span>
             </div>
-          )
-        })}
+          ))}
+        </div>
       </div>
 
       {/* Cleaning + Shifts summary */}
