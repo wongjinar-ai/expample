@@ -26,6 +26,7 @@ interface Booking {
   booking_ref: string
   passport_url?: string
   tm30_url?: string
+  passport_uploaded_at?: string
 }
 
 const EMPTY: Booking = {
@@ -115,6 +116,9 @@ export default function BookingModal({ booking, onClose, onSaved }: Props) {
         if (path) updates.tm30_url = path
       }
 
+      if (passportFile && updates.passport_url) {
+        updates.passport_uploaded_at = new Date().toISOString()
+      }
       if (Object.keys(updates).length > 0) {
         await supabase.from('bookings').update(updates).eq('id', bookingId)
       }
