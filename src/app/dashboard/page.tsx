@@ -126,10 +126,14 @@ const ACTION_BTN: React.CSSProperties = {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
+  return localDateStr(d)
 }
 
 function getMondayOfWeek(dateStr: string): string {
@@ -137,7 +141,7 @@ function getMondayOfWeek(dateStr: string): string {
   const day = d.getDay() // 0=Sun
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
-  return d.toISOString().slice(0, 10)
+  return localDateStr(d)
 }
 
 function getDayName(dateStr: string): string {
@@ -166,7 +170,7 @@ function DashboardTab() {
   const [loading, setLoading] = useState(true)
   const [editBooking, setEditBooking] = useState<Booking | null>(null)
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateStr(new Date())
   const thisMonth = todayStr.slice(0, 7)
 
   const load = useCallback(async () => {
@@ -516,7 +520,7 @@ function RoomsTab() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Booking | null>(null)
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateStr(new Date())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -821,7 +825,7 @@ function CleaningTab() {
   const [saving, setSaving] = useState<string | null>(null)
   const [cleanFilter, setCleanFilter] = useState('all')
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateStr(new Date())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -972,7 +976,7 @@ function ShiftsTab() {
   const [loading, setLoading] = useState(true)
   const [shiftFilter, setShiftFilter] = useState('all')
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateStr(new Date())
   const todayDayName = new Date(todayStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })
   const todayShortLower = todayDayName.slice(0, 3).toLowerCase() as keyof StaffMember
 
