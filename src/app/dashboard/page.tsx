@@ -448,14 +448,19 @@ function DashboardTab() {
                       : isCheckout ? '#92400E'
                       : isCheckin  ? '#166534'
                       : '#1E40AF'
+                    const shortName = b ? (b.guest.length > 6 ? b.guest.slice(0, 6) + '…' : b.guest) : ''
                     return (
-                      <td key={dateStr} style={{ ...TD, textAlign: 'center', padding: '5px 3px', background: isToday ? '#EFF6FF' : undefined }}>
+                      <td key={dateStr} style={{ ...TD, textAlign: 'center', padding: '4px 3px', background: isToday ? '#EFF6FF' : undefined }}>
                         {b ? (
-                          <div style={{ background: cellBg, color: cellColor, borderRadius: '4px', padding: '3px 2px', fontSize: '10px', fontWeight: 500, lineHeight: 1.3 }}>
-                            {initials(b.guest)}
+                          <div style={{ background: cellBg, color: cellColor, borderRadius: '4px', padding: '3px 4px', fontSize: '10px', fontWeight: 500, lineHeight: 1.4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: cellColor, display: 'inline-block', flexShrink: 0 }} />
+                              <span>{b.guests ?? 1}</span>
+                            </div>
+                            <div style={{ fontSize: '9px', overflow: 'hidden', whiteSpace: 'nowrap' }}>{shortName}</div>
                           </div>
                         ) : (
-                          <div style={{ width: '100%', height: '24px', borderRadius: '4px', background: 'var(--bg)', border: '0.5px solid var(--border)' }} />
+                          <div style={{ width: '100%', height: '34px', borderRadius: '4px', background: 'var(--bg)', border: '0.5px solid var(--border)' }} />
                         )}
                       </td>
                     )
@@ -463,6 +468,22 @@ function DashboardTab() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '1.5px solid var(--border)' }}>
+                <td colSpan={2} style={{ ...TD, fontWeight: 600, fontSize: '11px', color: 'var(--muted)' }}>Total guests</td>
+                {weekDays.map(({ dateStr }) => {
+                  const total = bookings
+                    .filter(b => isBookedOn(b, dateStr))
+                    .reduce((sum, b) => sum + (b.guests || 1), 0)
+                  const isToday = dateStr === todayStr
+                  return (
+                    <td key={dateStr} style={{ ...TD, textAlign: 'center', fontWeight: 700, fontSize: '12px', color: total > 0 ? '#1E40AF' : 'var(--muted)', background: isToday ? '#EFF6FF' : undefined }}>
+                      {total > 0 ? total : '—'}
+                    </td>
+                  )
+                })}
+              </tr>
+            </tfoot>
           </table>
         </div>
         {/* Legend */}
