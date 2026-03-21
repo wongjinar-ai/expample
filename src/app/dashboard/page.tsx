@@ -130,6 +130,11 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Date-only overlap check — ignores booking status so grid shows all bookings
+function isBookedOn(b: { checkin: string; checkout: string }, dateStr: string): boolean {
+  return b.checkin <= dateStr && b.checkout > dateStr
+}
+
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setDate(d.getDate() + n)
@@ -214,7 +219,7 @@ function DashboardTab() {
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const dateStr = addDays(monday, i)
     const occ = OCC_ROOMS.filter(room =>
-      bookings.some(b => b.room === room && isStayingOn(b, dateStr))
+      bookings.some(b => b.room === room && isBookedOn(b, dateStr))
     ).length
     return { dateStr, day: getDayName(dateStr), occ }
   })
@@ -229,7 +234,7 @@ function DashboardTab() {
   for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = `${thisMonth}-${String(d).padStart(2, '0')}`
     monthOccRoomDays += OCC_ROOMS.filter(room =>
-      bookings.some(b => b.room === room && isStayingOn(b, dayStr))
+      bookings.some(b => b.room === room && isBookedOn(b, dayStr))
     ).length
   }
   const monthOccPct = Math.round(monthOccRoomDays / 300 * 100)
@@ -431,9 +436,9 @@ function DashboardTab() {
                   <td style={{ ...TD, fontWeight: 500 }}>{room}</td>
                   <td style={{ ...TD, color: 'var(--muted)', fontSize: '11px' }}>{ROOM_TYPES[room as Room]}</td>
                   {weekDays.map(({ dateStr }) => {
-                    const b = bookings.find(bk => bk.room === room && isStayingOn(bk, dateStr))
+                    const b = bookings.find(bk => bk.room === room && isBookedOn(bk, dateStr))
                     const isToday = dateStr === todayStr
-                    const isCheckout = b?.status === 'Checkout'
+                    const isCheckout = b ? addDays(dateStr, 1) === b.checkout : false
                     const isCheckin = b?.checkin === dateStr
                     const cellBg = !b ? undefined
                       : isCheckout ? '#FEF3C7'
