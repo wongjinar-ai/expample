@@ -174,6 +174,7 @@ function DashboardTab() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [editBooking, setEditBooking] = useState<Booking | null>(null)
+  const [newBookingDefaults, setNewBookingDefaults] = useState<{ room: string; checkin: string } | null>(null)
 
   const todayStr = localDateStr(new Date())
   const thisMonth = todayStr.slice(0, 7)
@@ -460,7 +461,11 @@ function DashboardTab() {
                             <div style={{ fontSize: '9px', overflow: 'hidden', whiteSpace: 'nowrap' }}>{shortName}</div>
                           </div>
                         ) : (
-                          <div style={{ width: '100%', height: '34px', borderRadius: '4px', background: 'var(--bg)', border: '0.5px solid var(--border)' }} />
+                          <div
+                            onClick={() => setNewBookingDefaults({ room, checkin: dateStr })}
+                            style={{ width: '100%', height: '34px', borderRadius: '4px', background: 'var(--bg)', border: '0.5px solid var(--border)', cursor: 'pointer' }}
+                            title={`Add booking for ${room} on ${dateStr}`}
+                          />
                         )}
                       </td>
                     )
@@ -530,6 +535,14 @@ function DashboardTab() {
           booking={editBooking as Booking & { id: number }}
           onClose={() => setEditBooking(null)}
           onSaved={() => { setEditBooking(null); load() }}
+        />
+      )}
+
+      {newBookingDefaults && (
+        <BookingModal
+          defaults={{ room: newBookingDefaults.room, type: ROOM_TYPES[newBookingDefaults.room as Room], checkin: newBookingDefaults.checkin }}
+          onClose={() => setNewBookingDefaults(null)}
+          onSaved={() => { setNewBookingDefaults(null); load() }}
         />
       )}
     </>

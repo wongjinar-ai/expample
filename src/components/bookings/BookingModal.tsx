@@ -58,6 +58,7 @@ const EMPTY: Booking = {
 
 interface Props {
   booking?: Booking & { id: number }
+  defaults?: Partial<Booking>
   onClose: () => void
   onSaved: () => void
 }
@@ -282,8 +283,12 @@ function GuestDocSection({
 }
 
 // ── Main modal ────────────────────────────────────────────────────────────────
-export default function BookingModal({ booking, onClose, onSaved }: Props) {
-  const [form, setForm] = useState<Booking>(booking ?? EMPTY)
+export default function BookingModal({ booking, defaults, onClose, onSaved }: Props) {
+  const [form, setForm] = useState<Booking>(() => {
+    const base = booking ?? EMPTY
+    if (!booking && defaults) return { ...base, ...defaults }
+    return base
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [uploadStatus, setUploadStatus] = useState('')
