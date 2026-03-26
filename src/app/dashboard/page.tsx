@@ -175,6 +175,7 @@ function DashboardTab() {
   const [loading, setLoading] = useState(true)
   const [editBooking, setEditBooking] = useState<Booking | null>(null)
   const [newBookingDefaults, setNewBookingDefaults] = useState<{ room: string; checkin: string } | null>(null)
+  const [gridStart, setGridStart] = useState(() => getMondayOfWeek(localDateStr(new Date())))
 
   const todayStr = localDateStr(new Date())
   const thisMonth = todayStr.slice(0, 7)
@@ -414,21 +415,50 @@ function DashboardTab() {
         </div>
       </div>
 
-      {/* Occupancy by room — full week grid (Mon–Sun) */}
+      {/* Occupancy by room — full week grid (scrollable calendar) */}
       <div style={CARD}>
-        <div style={SECTION_LABEL}>Occupancy by room — {fmtDate(monday)} to {fmtDate(sundayStr)}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              onClick={() => setGridStart(s => addDays(s, -7))}
+              style={{ ...ACTION_BTN, padding: '4px 10px', fontSize: '14px', lineHeight: 1 }}
+            >‹</button>
+            <button
+              onClick={() => setGridStart(s => addDays(s, 7))}
+              style={{ ...ACTION_BTN, padding: '4px 10px', fontSize: '14px', lineHeight: 1 }}
+            >›</button>
+          </div>
+          <input
+            type="date"
+            value={gridStart}
+            onChange={e => e.target.value && setGridStart(e.target.value)}
+            style={{ ...INPUT_STYLE, fontSize: '12px', padding: '4px 8px' }}
+          />
+          <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '2px' }}>
+            {fmtDate(gridStart)} — {fmtDate(addDays(gridStart, 6))}
+          </span>
+          {gridStart !== getMondayOfWeek(todayStr) && (
+            <button
+              onClick={() => setGridStart(getMondayOfWeek(todayStr))}
+              style={{ ...ACTION_BTN, padding: '3px 8px', fontSize: '11px', marginLeft: 'auto' }}
+            >Today</button>
+          )}
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ ...TH, width: '80px', textAlign: 'left' }}>Room</th>
                 <th style={{ ...TH, width: '52px', textAlign: 'left' }}>Type</th>
-                {weekDays.map(({ dateStr, day }) => (
-                  <th key={dateStr} style={{ ...TH, textAlign: 'center', background: dateStr === todayStr ? '#EFF6FF' : undefined }}>
-                    <div style={{ fontWeight: 500 }}>{day}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 400 }}>{dateStr.slice(5)}</div>
-                  </th>
-                ))}
+                {Array.from({ length: 7 }, (_, i) => addDays(gridStart, i)).map(dateStr => {
+                  const day = getDayName(dateStr)
+                  return (
+                    <th key={dateStr} style={{ ...TH, textAlign: 'center', background: dateStr === todayStr ? '#EFF6FF' : undefined }}>
+                      <div style={{ fontWeight: 500 }}>{day}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 400 }}>{dateStr.slice(5)}</div>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -436,7 +466,7 @@ function DashboardTab() {
                 <tr key={room} onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <td style={{ ...TD, fontWeight: 500 }}>{room}</td>
                   <td style={{ ...TD, color: 'var(--muted)', fontSize: '11px' }}>{ROOM_TYPES[room as Room]}</td>
-                  {weekDays.map(({ dateStr }) => {
+                  {Array.from({ length: 7 }, (_, i) => addDays(gridStart, i)).map(dateStr => {
                     const b = bookings.find(bk => bk.room === room && isBookedOn(bk, dateStr))
                     const isToday = dateStr === todayStr
                     const isCheckout = b ? addDays(dateStr, 1) === b.checkout : false
@@ -476,7 +506,7 @@ function DashboardTab() {
             <tfoot>
               <tr style={{ borderTop: '1.5px solid var(--border)' }}>
                 <td colSpan={2} style={{ ...TD, fontWeight: 600, fontSize: '11px', color: 'var(--muted)' }}>Total guests</td>
-                {weekDays.map(({ dateStr }) => {
+                {Array.from({ length: 7 }, (_, i) => addDays(gridStart, i)).map(dateStr => {
                   const total = bookings
                     .filter(b => isBookedOn(b, dateStr))
                     .reduce((sum, b) => sum + (b.guests || 1), 0)
