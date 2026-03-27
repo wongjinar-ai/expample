@@ -1185,20 +1185,32 @@ const INCOME_CATEGORIES = [
 
 const EXPENSE_BUCKET = 'expense-receipts'
 
-async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
-  const isHEIC = /heic|heif/i.test(file.type + file.name)
-  if (!isHEIC && !file.type.startsWith('image/')) return { blob: file, ext: file.name.split('.').pop() ?? 'bin' }
-  const MAX = 2000
+async function resizeToJpeg(file: File, maxPx: number, quality: number): Promise<Blob> {
   const bitmap = await createImageBitmap(file)
   let { width: w, height: h } = bitmap
-  if (w > MAX || h > MAX) {
-    if (w > h) { h = Math.round(h * MAX / w); w = MAX } else { w = Math.round(w * MAX / h); h = MAX }
+  if (w > maxPx || h > maxPx) {
+    if (w > h) { h = Math.round(h * maxPx / w); w = maxPx } else { w = Math.round(w * maxPx / h); h = maxPx }
   }
   const canvas = document.createElement('canvas')
   canvas.width = w; canvas.height = h
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
   bitmap.close()
-  return new Promise(resolve => canvas.toBlob(blob => resolve({ blob: blob!, ext: 'jpg' }), 'image/jpeg', 0.88))
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas.toBlob returned null')), 'image/jpeg', quality)
+  )
+}
+
+// For storage upload — 2000px, high quality
+async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
+  const isHEIC = /heic|heif/i.test(file.type + file.name)
+  if (!isHEIC && !file.type.startsWith('image/')) return { blob: file, ext: file.name.split('.').pop() ?? 'bin' }
+  const blob = await resizeToJpeg(file, 2000, 0.88)
+  return { blob, ext: 'jpg' }
+}
+
+// For AI scan — 1200px, lower quality keeps payload small (~300-500KB)
+async function toScanBlob(file: File): Promise<Blob> {
+  return resizeToJpeg(file, 1200, 0.75)
 }
 
 interface Account { id: number; name: string; created_at: string }
@@ -1404,7 +1416,7 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
     setScanning(true)
     setScanMsg('Scanning receipt…')
     try {
-      const { blob } = await toJpegBlob(file)
+      const blob = await toScanBlob(file)
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => {
@@ -1419,6 +1431,7 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg' }),
       })
+      if (!res.ok) { setScanMsg(`Scan failed (${res.status}) — fill in manually`); return }
       const data = await res.json() as { description?: string; amount?: number; date?: string; error?: string }
       if (data.error) { setScanMsg('Scan failed: ' + data.error); return }
       setForm(f => ({
@@ -1428,8 +1441,8 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
         ...(data.date ? { date: data.date } : {}),
       }))
       setScanMsg('✓ Receipt scanned')
-    } catch {
-      setScanMsg('Scan failed — please fill in manually')
+    } catch (err) {
+      setScanMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown error'))
     } finally {
       setScanning(false)
     }

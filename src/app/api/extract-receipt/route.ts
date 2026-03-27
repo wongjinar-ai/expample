@@ -1,3 +1,5 @@
+export const maxDuration = 30
+
 export async function POST(request: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 })
