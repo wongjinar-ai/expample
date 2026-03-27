@@ -1174,6 +1174,24 @@ const EXPENSE_CATEGORIES = [
 
 const EXPENSE_BUCKET = 'expense-receipts'
 
+// Convert any image (including HEIC) to a JPEG Blob via canvas.
+// createImageBitmap natively supports HEIC on macOS Chrome 118+.
+async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
+  const isHEIC = /heic|heif/i.test(file.type + file.name)
+  if (!isHEIC && !file.type.startsWith('image/')) return { blob: file, ext: file.name.split('.').pop() ?? 'bin' }
+  const MAX = 2000
+  const bitmap = await createImageBitmap(file)
+  let { width: w, height: h } = bitmap
+  if (w > MAX || h > MAX) {
+    if (w > h) { h = Math.round(h * MAX / w); w = MAX } else { w = Math.round(w * MAX / h); h = MAX }
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = w; canvas.height = h
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close()
+  return new Promise(resolve => canvas.toBlob(blob => resolve({ blob: blob!, ext: 'jpg' }), 'image/jpeg', 0.88))
+}
+
 interface Expense {
   id: number
   date: string
@@ -1240,9 +1258,9 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
       if (err) { setError(err.message); setSaving(false); return }
 
       if (receiptFile) {
-        const ext = receiptFile.name.split('.').pop() ?? 'jpg'
+        const { blob, ext } = await toJpegBlob(receiptFile)
         const path = `${expense.id}/receipt.${ext}`
-        await supabase.storage.from(EXPENSE_BUCKET).upload(path, receiptFile, { upsert: true })
+        await supabase.storage.from(EXPENSE_BUCKET).upload(path, blob, { upsert: true, contentType: ext === 'jpg' ? 'image/jpeg' : receiptFile.type })
         await supabase.from('expenses').update({ receipt_url: path }).eq('id', expense.id)
       }
     } else {
@@ -1254,9 +1272,9 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
       if (err || !inserted) { setError(err?.message ?? 'Insert failed'); setSaving(false); return }
 
       if (receiptFile) {
-        const ext = receiptFile.name.split('.').pop() ?? 'jpg'
+        const { blob, ext } = await toJpegBlob(receiptFile)
         const path = `${inserted.id}/receipt.${ext}`
-        await supabase.storage.from(EXPENSE_BUCKET).upload(path, receiptFile, { upsert: true })
+        await supabase.storage.from(EXPENSE_BUCKET).upload(path, blob, { upsert: true, contentType: ext === 'jpg' ? 'image/jpeg' : receiptFile.type })
         await supabase.from('expenses').update({ receipt_url: path }).eq('id', inserted.id)
       }
     }
@@ -1338,7 +1356,7 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
           <label style={labelStyle}>Receipt</label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button type="button" onClick={() => fileRef.current?.click()} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px' }}>
-              {receiptFile ? `✓ ${receiptFile.name.slice(0, 20)}` : expense?.receipt_url ? '📷 Replace receipt' : '📷 Upload receipt'}
+              {receiptFile ? `✓ ${receiptFile.name.slice(0, 22)}` : expense?.receipt_url ? '📷 Replace receipt' : '📷 Upload receipt'}
             </button>
             {expense?.receipt_url && !receiptFile && (
               <button type="button" onClick={viewReceipt} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px', color: '#185FA5' }}>View</button>
