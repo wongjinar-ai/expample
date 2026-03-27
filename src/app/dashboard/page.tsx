@@ -1161,26 +1161,17 @@ function ShiftsTab() {
 // ─── AccountsTab ───────────────────────────────────────────────────────────────
 
 const EXPENSE_CATEGORIES = [
-  'Fix Expense',
-  'Labor / Worker Cost',
-  'Ingredient for Cafe',
-  'Food & Beverage',
-  'Utilities',
-  'Maintenance & Repair',
-  'Cleaning Supplies',
-  'Staff & Wages',
-  'Marketing',
-  'Transport',
-  'Equipment',
-  'Other',
+  'Guesthouse',
+  'Cafe',
+  'Vehicle Rent',
+  'Workshop',
 ] as const
 
 const INCOME_CATEGORIES = [
   'Guesthouse',
   'Cafe',
   'Vehicle Rent',
-  'Other Services',
-  'Other',
+  'Workshop',
 ] as const
 
 const EXPENSE_BUCKET = 'expense-receipts'
