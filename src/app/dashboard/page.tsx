@@ -1394,9 +1394,46 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
     account_id: expense?.account_id as number | undefined,
   })
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  async function scanReceipt(file: File) {
+    setScanning(true)
+    setScanMsg('Scanning receipt…')
+    try {
+      const { blob } = await toJpegBlob(file)
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.slice(result.indexOf(',') + 1))
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const res = await fetch('/api/extract-receipt', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg' }),
+      })
+      const data = await res.json() as { description?: string; amount?: number; date?: string; error?: string }
+      if (data.error) { setScanMsg('Scan failed: ' + data.error); return }
+      setForm(f => ({
+        ...f,
+        ...(data.description ? { description: data.description } : {}),
+        ...(data.amount && data.amount > 0 ? { amount: data.amount } : {}),
+        ...(data.date ? { date: data.date } : {}),
+      }))
+      setScanMsg('✓ Receipt scanned')
+    } catch {
+      setScanMsg('Scan failed — please fill in manually')
+    } finally {
+      setScanning(false)
+    }
+  }
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: value }))
@@ -1488,14 +1525,27 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
         </div>
         <div style={M_ROW}>
           <label style={M_LABEL}>Receipt</label>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button type="button" onClick={() => fileRef.current?.click()} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px' }}>
               {receiptFile ? `✓ ${receiptFile.name.slice(0, 22)}` : expense?.receipt_url ? '📷 Replace' : '📷 Upload receipt'}
             </button>
+            {receiptFile && (
+              <button type="button" onClick={() => scanReceipt(receiptFile)} disabled={scanning} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px', background: scanning ? 'var(--surface2)' : '#1E40AF', color: '#fff', borderColor: '#1E40AF' }}>
+                {scanning ? '⏳ Scanning…' : '✦ Scan'}
+              </button>
+            )}
             {expense?.receipt_url && !receiptFile && (
               <button type="button" onClick={viewReceipt} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px', color: '#185FA5' }}>View</button>
             )}
-            <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
+            {scanMsg && <span style={{ fontSize: '11px', color: scanMsg.startsWith('✓') ? '#166534' : 'var(--muted)' }}>{scanMsg}</span>}
+            <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0] ?? null
+                setReceiptFile(file)
+                setScanMsg('')
+                if (file) scanReceipt(file)
+              }}
+            />
           </div>
         </div>
         <div style={M_FOOTER}>
