@@ -1161,6 +1161,9 @@ function ShiftsTab() {
 // ─── AccountsTab ───────────────────────────────────────────────────────────────
 
 const EXPENSE_CATEGORIES = [
+  'Fix Expense',
+  'Labor / Worker Cost',
+  'Ingredient for Cafe',
   'Food & Beverage',
   'Utilities',
   'Maintenance & Repair',
@@ -1172,10 +1175,16 @@ const EXPENSE_CATEGORIES = [
   'Other',
 ] as const
 
+const INCOME_CATEGORIES = [
+  'Guesthouse',
+  'Cafe',
+  'Vehicle Rent',
+  'Other Services',
+  'Other',
+] as const
+
 const EXPENSE_BUCKET = 'expense-receipts'
 
-// Convert any image (including HEIC) to a JPEG Blob via canvas.
-// createImageBitmap natively supports HEIC on macOS Chrome 118+.
 async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
   const isHEIC = /heic|heif/i.test(file.type + file.name)
   if (!isHEIC && !file.type.startsWith('image/')) return { blob: file, ext: file.name.split('.').pop() ?? 'bin' }
@@ -1192,51 +1201,210 @@ async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
   return new Promise(resolve => canvas.toBlob(blob => resolve({ blob: blob!, ext: 'jpg' }), 'image/jpeg', 0.88))
 }
 
+interface Account { id: number; name: string; created_at: string }
+
 interface Expense {
-  id: number
-  date: string
-  category: string
-  description: string
-  amount: number
-  paid_by: string
-  receipt_url?: string
-  notes: string
-  created_at: string
+  id: number; date: string; category: string; description: string
+  amount: number; paid_by: string; receipt_url?: string; notes: string
+  account_id?: number; created_at: string
 }
 
-const EXPENSE_EMPTY = {
-  date: localDateStr(new Date()),
-  category: EXPENSE_CATEGORIES[0] as string,
-  description: '',
-  amount: 0,
-  paid_by: 'Cash',
-  receipt_url: '',
-  notes: '',
+interface IncomeTx {
+  id: number; date: string; name: string; amount: number
+  category: string; account_id?: number; notes: string; created_at: string
 }
 
-// ── ExpenseModal ──────────────────────────────────────────────────────────────
+// ── Shared modal styles ────────────────────────────────────────────────────────
 
-interface ExpenseModalProps {
-  expense?: Expense
-  onClose: () => void
-  onSaved: () => void
+const M_OVERLAY: React.CSSProperties = {
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+}
+const M_BOX: React.CSSProperties = {
+  background: 'var(--surface)', border: '0.5px solid var(--border)',
+  borderRadius: '12px', padding: '24px', width: '480px', maxWidth: '95vw',
+  maxHeight: '90vh', overflowY: 'auto',
+}
+const M_LABEL: React.CSSProperties = { fontSize: '11px', color: 'var(--muted)', marginBottom: '4px', display: 'block' }
+const M_INPUT: React.CSSProperties = { ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' as const }
+const M_ROW: React.CSSProperties = { marginBottom: '14px' }
+const M_FOOTER: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '0.5px solid var(--border)' }
+
+// ── AccountModal ───────────────────────────────────────────────────────────────
+
+function AccountModal({ account, onClose, onSaved }: { account?: Account; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(account?.name ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSave() {
+    if (!name.trim()) { setError('Name is required'); return }
+    setSaving(true)
+    const supabase = createClient()
+    if (account?.id) {
+      await supabase.from('accounts').update({ name }).eq('id', account.id)
+    } else {
+      await supabase.from('accounts').insert({ name })
+    }
+    onSaved()
+  }
+
+  async function handleDelete() {
+    if (!account?.id || !confirm('Delete this account?')) return
+    await createClient().from('accounts').delete().eq('id', account.id)
+    onSaved()
+  }
+
+  return (
+    <div style={M_OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ ...M_BOX, width: '360px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 500, margin: 0 }}>{account?.id ? 'Edit Account' : 'New Account'}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        {error && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>{error}</div>}
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Account name</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Cash, Bank Account" style={M_INPUT} autoFocus />
+        </div>
+        <div style={M_FOOTER}>
+          {account?.id
+            ? <button onClick={handleDelete} style={{ ...ACTION_BTN, color: '#A32D2D', borderColor: '#A32D2D', fontSize: '12px', padding: '6px 14px' }}>Delete</button>
+            : <span />}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={onClose} style={{ ...ACTION_BTN, fontSize: '12px', padding: '6px 14px' }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...ACTION_BTN, background: '#1E40AF', color: '#fff', borderColor: '#1E40AF', fontSize: '12px', padding: '6px 16px' }}>
+              {saving ? 'Saving…' : account?.id ? 'Save' : 'Add Account'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
-  const [form, setForm] = useState({ ...EXPENSE_EMPTY, ...(expense ?? {}) })
+// ── IncomeTxModal ──────────────────────────────────────────────────────────────
+
+function IncomeTxModal({ tx, accounts, onClose, onSaved }: { tx?: IncomeTx; accounts: Account[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    date: tx?.date ?? localDateStr(new Date()),
+    name: tx?.name ?? '',
+    amount: tx?.amount ?? 0,
+    category: tx?.category ?? (INCOME_CATEGORIES[0] as string),
+    account_id: tx?.account_id as number | undefined,
+    notes: tx?.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('Name is required'); return }
+    if (!form.date) { setError('Date is required'); return }
+    if (form.amount <= 0) { setError('Amount must be greater than 0'); return }
+    setSaving(true); setError('')
+    const supabase = createClient()
+    const payload = { date: form.date, name: form.name, amount: form.amount, category: form.category, account_id: form.account_id ?? null, notes: form.notes }
+    if (tx?.id) {
+      const { error: err } = await supabase.from('income_transactions').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', tx.id)
+      if (err) { setError(err.message); setSaving(false); return }
+    } else {
+      const { error: err } = await supabase.from('income_transactions').insert(payload)
+      if (err) { setError(err.message); setSaving(false); return }
+    }
+    onSaved()
+  }
+
+  async function handleDelete() {
+    if (!tx?.id || !confirm('Delete this income entry?')) return
+    await createClient().from('income_transactions').delete().eq('id', tx.id)
+    onSaved()
+  }
+
+  return (
+    <div style={M_OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={M_BOX}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 500, margin: 0 }}>{tx?.id ? 'Edit Income' : 'New Income'}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        {error && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>{error}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Date</label>
+            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={M_INPUT} />
+          </div>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Category</label>
+            <select value={form.category} onChange={e => set('category', e.target.value)} style={M_INPUT}>
+              {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Name / Description</label>
+          <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Booking, Cafe, Motorbike rent" style={M_INPUT} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Amount (฿)</label>
+            <input type="number" min={0} value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} placeholder="0" style={M_INPUT} />
+          </div>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Account</label>
+            <select value={form.account_id ?? ''} onChange={e => set('account_id', e.target.value ? Number(e.target.value) : undefined)} style={M_INPUT}>
+              <option value="">— none —</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Notes (optional)</label>
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...M_INPUT, resize: 'vertical' }} />
+        </div>
+        <div style={M_FOOTER}>
+          {tx?.id
+            ? <button onClick={handleDelete} style={{ ...ACTION_BTN, color: '#A32D2D', borderColor: '#A32D2D', fontSize: '12px', padding: '6px 14px' }}>Delete</button>
+            : <span />}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={onClose} style={{ ...ACTION_BTN, fontSize: '12px', padding: '6px 14px' }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...ACTION_BTN, background: '#166534', color: '#fff', borderColor: '#166534', fontSize: '12px', padding: '6px 16px' }}>
+              {saving ? 'Saving…' : tx?.id ? 'Save Changes' : 'Add Income'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ExpenseModal ───────────────────────────────────────────────────────────────
+
+function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expense; accounts: Account[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    date: expense?.date ?? localDateStr(new Date()),
+    category: expense?.category ?? (EXPENSE_CATEGORIES[0] as string),
+    description: expense?.description ?? '',
+    amount: expense?.amount ?? 0,
+    paid_by: expense?.paid_by ?? 'Cash',
+    notes: expense?.notes ?? '',
+    account_id: expense?.account_id as number | undefined,
+  })
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  function set<K extends keyof typeof EXPENSE_EMPTY>(key: K, value: (typeof EXPENSE_EMPTY)[K]) {
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: value }))
   }
 
   async function viewReceipt() {
     if (!expense?.receipt_url) return
-    const supabase = createClient()
-    const { data } = await supabase.storage.from(EXPENSE_BUCKET).createSignedUrl(expense.receipt_url, 3600)
+    const { data } = await createClient().storage.from(EXPENSE_BUCKET).createSignedUrl(expense.receipt_url, 3600)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
@@ -1244,119 +1412,85 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
     if (!form.description.trim()) { setError('Description is required'); return }
     if (!form.date) { setError('Date is required'); return }
     if (form.amount <= 0) { setError('Amount must be greater than 0'); return }
-    setSaving(true)
-    setError('')
+    setSaving(true); setError('')
     const supabase = createClient()
-
-    if (expense?.id) {
-      // Update
-      const { error: err } = await supabase.from('expenses').update({
-        date: form.date, category: form.category, description: form.description,
-        amount: form.amount, paid_by: form.paid_by, notes: form.notes,
-        updated_at: new Date().toISOString(),
-      }).eq('id', expense.id)
+    const payload = { date: form.date, category: form.category, description: form.description, amount: form.amount, paid_by: form.paid_by, notes: form.notes, account_id: form.account_id ?? null }
+    let expId = expense?.id
+    if (expId) {
+      const { error: err } = await supabase.from('expenses').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', expId)
       if (err) { setError(err.message); setSaving(false); return }
-
-      if (receiptFile) {
-        const { blob, ext } = await toJpegBlob(receiptFile)
-        const path = `${expense.id}/receipt.${ext}`
-        await supabase.storage.from(EXPENSE_BUCKET).upload(path, blob, { upsert: true, contentType: ext === 'jpg' ? 'image/jpeg' : receiptFile.type })
-        await supabase.from('expenses').update({ receipt_url: path }).eq('id', expense.id)
-      }
     } else {
-      // Insert
-      const { data: inserted, error: err } = await supabase.from('expenses').insert({
-        date: form.date, category: form.category, description: form.description,
-        amount: form.amount, paid_by: form.paid_by, notes: form.notes,
-      }).select().single()
-      if (err || !inserted) { setError(err?.message ?? 'Insert failed'); setSaving(false); return }
-
-      if (receiptFile) {
-        const { blob, ext } = await toJpegBlob(receiptFile)
-        const path = `${inserted.id}/receipt.${ext}`
-        await supabase.storage.from(EXPENSE_BUCKET).upload(path, blob, { upsert: true, contentType: ext === 'jpg' ? 'image/jpeg' : receiptFile.type })
-        await supabase.from('expenses').update({ receipt_url: path }).eq('id', inserted.id)
-      }
+      const { data: ins, error: err } = await supabase.from('expenses').insert(payload).select().single()
+      if (err || !ins) { setError(err?.message ?? 'Insert failed'); setSaving(false); return }
+      expId = ins.id
     }
-
+    if (receiptFile && expId) {
+      const { blob, ext } = await toJpegBlob(receiptFile)
+      const path = `${expId}/receipt.${ext}`
+      await supabase.storage.from(EXPENSE_BUCKET).upload(path, blob, { upsert: true, contentType: ext === 'jpg' ? 'image/jpeg' : receiptFile.type })
+      await supabase.from('expenses').update({ receipt_url: path }).eq('id', expId)
+    }
     onSaved()
   }
 
   async function handleDelete() {
-    if (!expense?.id) return
-    if (!confirm('Delete this expense?')) return
+    if (!expense?.id || !confirm('Delete this expense?')) return
     const supabase = createClient()
-    if (expense.receipt_url) {
-      await supabase.storage.from(EXPENSE_BUCKET).remove([expense.receipt_url])
-    }
+    if (expense.receipt_url) await supabase.storage.from(EXPENSE_BUCKET).remove([expense.receipt_url])
     await supabase.from('expenses').delete().eq('id', expense.id)
     onSaved()
   }
 
-  const overlayStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-  }
-  const modalStyle: React.CSSProperties = {
-    background: 'var(--surface)', border: '0.5px solid var(--border)',
-    borderRadius: '12px', padding: '24px', width: '480px', maxWidth: '95vw',
-    maxHeight: '90vh', overflowY: 'auto',
-  }
-  const labelStyle: React.CSSProperties = { fontSize: '11px', color: 'var(--muted)', marginBottom: '4px', display: 'block' }
-  const inputStyle: React.CSSProperties = {
-    ...INPUT_STYLE, width: '100%', boxSizing: 'border-box',
-  }
-  const rowStyle: React.CSSProperties = { marginBottom: '14px' }
-
   return (
-    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={modalStyle}>
+    <div style={M_OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={M_BOX}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: 500, margin: 0 }}>{expense?.id ? 'Edit Expense' : 'New Expense'}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
-
         {error && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>{error}</div>}
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Date</label>
-            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inputStyle} />
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Date</label>
+            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={M_INPUT} />
           </div>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Category</label>
-            <select value={form.category} onChange={e => set('category', e.target.value)} style={inputStyle}>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Category</label>
+            <select value={form.category} onChange={e => set('category', e.target.value)} style={M_INPUT}>
               {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
-
-        <div style={rowStyle}>
-          <label style={labelStyle}>Description</label>
-          <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Breakfast ingredients" style={inputStyle} />
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Description</label>
+          <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Watercity, Electricity bill" style={M_INPUT} />
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Amount (฿)</label>
-            <input type="number" min={0} value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} placeholder="0" style={inputStyle} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Amount (฿)</label>
+            <input type="number" min={0} value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} placeholder="0" style={M_INPUT} />
           </div>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Paid by</label>
-            <input value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Cash / Card / Name" style={inputStyle} />
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Paid by</label>
+            <input value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Cash / Card" style={M_INPUT} />
+          </div>
+          <div style={M_ROW}>
+            <label style={M_LABEL}>Account</label>
+            <select value={form.account_id ?? ''} onChange={e => set('account_id', e.target.value ? Number(e.target.value) : undefined)} style={M_INPUT}>
+              <option value="">— none —</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
           </div>
         </div>
-
-        <div style={rowStyle}>
-          <label style={labelStyle}>Notes (optional)</label>
-          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Any additional details…" style={{ ...inputStyle, resize: 'vertical' }} />
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Notes (optional)</label>
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...M_INPUT, resize: 'vertical' }} />
         </div>
-
-        <div style={rowStyle}>
-          <label style={labelStyle}>Receipt</label>
+        <div style={M_ROW}>
+          <label style={M_LABEL}>Receipt</label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button type="button" onClick={() => fileRef.current?.click()} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px' }}>
-              {receiptFile ? `✓ ${receiptFile.name.slice(0, 22)}` : expense?.receipt_url ? '📷 Replace receipt' : '📷 Upload receipt'}
+              {receiptFile ? `✓ ${receiptFile.name.slice(0, 22)}` : expense?.receipt_url ? '📷 Replace' : '📷 Upload receipt'}
             </button>
             {expense?.receipt_url && !receiptFile && (
               <button type="button" onClick={viewReceipt} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px', color: '#185FA5' }}>View</button>
@@ -1364,15 +1498,13 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
             <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
           </div>
         </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '0.5px solid var(--border)' }}>
+        <div style={M_FOOTER}>
           {expense?.id
             ? <button onClick={handleDelete} style={{ ...ACTION_BTN, color: '#A32D2D', borderColor: '#A32D2D', fontSize: '12px', padding: '6px 14px' }}>Delete</button>
-            : <span />
-          }
+            : <span />}
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={onClose} style={{ ...ACTION_BTN, fontSize: '12px', padding: '6px 14px' }}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} style={{ ...ACTION_BTN, background: saving ? 'var(--surface2)' : '#1E40AF', color: '#fff', borderColor: '#1E40AF', fontSize: '12px', padding: '6px 16px' }}>
+            <button onClick={handleSave} disabled={saving} style={{ ...ACTION_BTN, background: '#A32D2D', color: '#fff', borderColor: '#A32D2D', fontSize: '12px', padding: '6px 16px' }}>
               {saving ? 'Saving…' : expense?.id ? 'Save Changes' : 'Add Expense'}
             </button>
           </div>
@@ -1382,24 +1514,38 @@ function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
   )
 }
 
+// ── AccountsTab ────────────────────────────────────────────────────────────────
+
 function AccountsTab() {
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [income, setIncome] = useState<IncomeTx[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing] = useState<Expense | null>(null)
-  const [catFilter, setCatFilter] = useState('all')
 
   const now = new Date()
   const [selectedMonthNum, setSelectedMonthNum] = useState(() => now.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(() => now.getFullYear())
+
+  const [showAccountModal, setShowAccountModal] = useState(false)
+  const [editAccount, setEditAccount] = useState<Account | null>(null)
+  const [showIncomeModal, setShowIncomeModal] = useState(false)
+  const [editIncome, setEditIncome] = useState<IncomeTx | null>(null)
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [editExpense, setEditExpense] = useState<Expense | null>(null)
 
   const selectedMonth = `${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}`
 
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data } = await supabase.from('expenses').select('*').order('date', { ascending: false })
-    setExpenses(data ?? [])
+    const [{ data: accs }, { data: inc }, { data: exp }] = await Promise.all([
+      supabase.from('accounts').select('*').order('name'),
+      supabase.from('income_transactions').select('*').order('date', { ascending: false }),
+      supabase.from('expenses').select('*').order('date', { ascending: false }),
+    ])
+    setAccounts(accs ?? [])
+    setIncome(inc ?? [])
+    setExpenses(exp ?? [])
     setLoading(false)
   }, [])
 
@@ -1408,135 +1554,190 @@ function AccountsTab() {
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i)
 
-  const filtered = expenses.filter(e => e.date.startsWith(selectedMonth) && (catFilter === 'all' || e.category === catFilter))
-  const totalAmount = filtered.reduce((s, e) => s + e.amount, 0)
-
-  // Category breakdown (all in month, unaffected by catFilter)
-  const monthExpenses = expenses.filter(e => e.date.startsWith(selectedMonth))
-  const byCat: Record<string, number> = {}
-  for (const e of monthExpenses) byCat[e.category] = (byCat[e.category] ?? 0) + e.amount
-  const topCats = Object.entries(byCat).sort((a, b) => b[1] - a[1])
-
-  const CAT_COLORS: Record<string, string> = {
-    'Food & Beverage': '#166534',
-    'Utilities': '#1E40AF',
-    'Maintenance & Repair': '#92400E',
-    'Cleaning Supplies': '#065F46',
-    'Staff & Wages': '#6B21A8',
-    'Marketing': '#B45309',
-    'Transport': '#0F766E',
-    'Equipment': '#9F1239',
-    'Other': '#374151',
+  // Account balance = all-time income - all-time expenses assigned to that account
+  function accountBalance(accId: number) {
+    const inc = income.filter(t => t.account_id === accId).reduce((s, t) => s + t.amount, 0)
+    const exp = expenses.filter(e => e.account_id === accId).reduce((s, e) => s + e.amount, 0)
+    return inc - exp
   }
+
+  // Monthly P&L
+  const monthIncome  = income.filter(t => t.date.startsWith(selectedMonth))
+  const monthExpenses = expenses.filter(e => e.date.startsWith(selectedMonth))
+  const totalIncome  = monthIncome.reduce((s, t) => s + t.amount, 0)
+  const totalExpense = monthExpenses.reduce((s, e) => s + e.amount, 0)
+  const netPL = totalIncome - totalExpense
+
+  const acctName = (id?: number) => accounts.find(a => a.id === id)?.name ?? '—'
+
+  const NEW_BTN = (color: string): React.CSSProperties => ({ ...ACTION_BTN, background: color, color: '#fff', borderColor: color, fontSize: '12px', padding: '4px 12px' })
 
   return (
     <>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <select value={selectedMonthNum} onChange={e => setSelectedMonthNum(Number(e.target.value))} style={INPUT_STYLE}>
-            {MONTHS.map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
-          </select>
-          <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={INPUT_STYLE}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={INPUT_STYLE}>
-            <option value="all">All categories</option>
-            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <button
-          onClick={() => { setEditing(null); setShowModal(true) }}
-          style={{ ...ACTION_BTN, background: '#1E40AF', color: '#fff', borderColor: '#1E40AF', padding: '7px 16px', fontSize: '13px' }}
-        >+ Add Expense</button>
+      {/* Month / year selector */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.5rem' }}>
+        <select value={selectedMonthNum} onChange={e => setSelectedMonthNum(Number(e.target.value))} style={INPUT_STYLE}>
+          {MONTHS.map((name, i) => <option key={i+1} value={i+1}>{name}</option>)}
+        </select>
+        <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={INPUT_STYLE}>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: '10px', marginBottom: '1.5rem' }}>
-        <div style={METRIC_CARD}>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Total expenses</div>
-          <div style={{ fontSize: '20px', fontWeight: 500, color: '#A32D2D' }}>{fmtMoney(monthExpenses.reduce((s, e) => s + e.amount, 0))}</div>
-        </div>
-        <div style={METRIC_CARD}>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Transactions</div>
-          <div style={{ fontSize: '20px', fontWeight: 500, color: 'var(--text)' }}>{monthExpenses.length}</div>
-        </div>
-        {topCats.slice(0, 3).map(([cat, amt]) => (
-          <div key={cat} style={METRIC_CARD}>
-            <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>{cat}</div>
-            <div style={{ fontSize: '18px', fontWeight: 500, color: CAT_COLORS[cat] ?? 'var(--text)' }}>{fmtMoney(amt)}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Category breakdown bar */}
-      {topCats.length > 0 && (
-        <div style={{ ...CARD, marginBottom: '1rem' }}>
-          <div style={SECTION_LABEL}>Breakdown — {MONTHS[selectedMonthNum - 1]} {selectedYear}</div>
-          {topCats.map(([cat, amt]) => {
-            const pct = Math.round((amt / monthExpenses.reduce((s, e) => s + e.amount, 0)) * 100)
-            return (
-              <div key={cat} style={{ marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
-                  <span>{cat}</span>
-                  <span style={{ fontWeight: 500 }}>{fmtMoney(amt)} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({pct}%)</span></span>
-                </div>
-                <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '2px' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: CAT_COLORS[cat] ?? '#374151', borderRadius: '2px' }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Expense table */}
+      {/* ── Accounts ── */}
       <div style={CARD}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
-          <div style={SECTION_LABEL}>Expenses — {filtered.length} record{filtered.length !== 1 ? 's' : ''}</div>
-          {catFilter !== 'all' && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Total: <strong style={{ color: '#A32D2D' }}>{fmtMoney(totalAmount)}</strong></span>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={SECTION_LABEL}>Account</div>
+          <button onClick={() => { setEditAccount(null); setShowAccountModal(true) }} style={{ ...ACTION_BTN, fontSize: '12px', padding: '4px 12px' }}>+ New</button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--surface)' }}>
-                {['Date', 'Category', 'Description', 'Amount', 'Paid by', 'Receipt', 'Notes', ''].map(h => (
-                  <th key={h} style={TH}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--muted)' }}>Loading…</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>No expenses this month.</td></tr>
-              ) : filtered.map(e => (
-                <tr key={e.id}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--surface)')}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
-                  onClick={() => { setEditing(e); setShowModal(true) }}
+        {loading ? (
+          <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Loading…</p>
+        ) : accounts.length === 0 ? (
+          <p style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>No accounts yet — add one.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px' }}>
+            {accounts.map(acc => {
+              const bal = accountBalance(acc.id)
+              return (
+                <div key={acc.id}
+                  onClick={() => { setEditAccount(acc); setShowAccountModal(true) }}
+                  style={{ background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: '8px', padding: '14px', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#378ADD')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
                 >
-                  <td style={TD}>{fmtDate(e.date)}</td>
-                  <td style={TD}><span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px', background: 'var(--surface2)', color: CAT_COLORS[e.category] ?? 'var(--text)' }}>{e.category}</span></td>
-                  <td style={TD}>{e.description}</td>
-                  <td style={{ ...TD, fontWeight: 500, color: '#A32D2D' }}>{fmtMoney(e.amount)}</td>
-                  <td style={{ ...TD, color: 'var(--muted)' }}>{e.paid_by}</td>
-                  <td style={TD}>{e.receipt_url ? <span style={{ fontSize: '11px', color: '#185FA5' }}>📷</span> : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}</td>
-                  <td style={{ ...TD, color: 'var(--muted)', fontSize: '12px', maxWidth: '160px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{e.notes || '—'}</td>
-                  <td style={TD}><button onClick={ev => { ev.stopPropagation(); setEditing(e); setShowModal(true) }} style={{ ...ACTION_BTN, padding: '3px 10px', fontSize: '11px' }}>Edit</button></td>
+                  <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>🏦 {acc.name}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: bal < 0 ? '#A32D2D' : 'var(--text)' }}>
+                    {bal < 0 ? `−${fmtMoney(Math.abs(bal))}` : fmtMoney(bal)}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Monthly P&L ── */}
+      <div style={CARD}>
+        <div style={SECTION_LABEL}>Monthly P&L</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'var(--surface)' }}>
+              {['Name', 'Total Income', 'Total Expense', 'Net P/L', 'Status'].map(h => <th key={h} style={TH}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ ...TD, fontWeight: 500 }}>{MONTHS[selectedMonthNum - 1]} {selectedYear}</td>
+              <td style={{ ...TD, fontWeight: 500, color: '#166534' }}>{fmtMoney(totalIncome)}</td>
+              <td style={{ ...TD, fontWeight: 500, color: '#A32D2D' }}>{fmtMoney(totalExpense)}</td>
+              <td style={{ ...TD, fontWeight: 700, color: netPL >= 0 ? '#166534' : '#A32D2D' }}>
+                {netPL < 0 ? `−${fmtMoney(Math.abs(netPL))}` : fmtMoney(netPL)}
+              </td>
+              <td style={TD}>
+                <span style={{ fontSize: '12px', fontWeight: 500, padding: '3px 10px', borderRadius: '20px', background: netPL >= 0 ? '#DCFCE7' : '#FEE2E2', color: netPL >= 0 ? '#166534' : '#991B1B' }}>
+                  {netPL >= 0 ? '🟢 Profit' : '🔴 Loss'}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Income | Expense split ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+
+        {/* Income */}
+        <div style={CARD}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={SECTION_LABEL}>Income</div>
+            <button onClick={() => { setEditIncome(null); setShowIncomeModal(true) }} style={NEW_BTN('#166534')}>+ New</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface)' }}>
+                  {['Date', 'Name', 'Amount', 'Category', 'Account'].map(h => <th key={h} style={TH}>{h}</th>)}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {monthIncome.length === 0
+                  ? <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>No income this month.</td></tr>
+                  : monthIncome.map(t => (
+                    <tr key={t.id} style={{ cursor: 'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      onClick={() => { setEditIncome(t); setShowIncomeModal(true) }}
+                    >
+                      <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: '12px', color: 'var(--muted)' }}>{t.date.slice(5).replace('-', ' ')}</td>
+                      <td style={{ ...TD, fontWeight: 500 }}>{t.name}</td>
+                      <td style={{ ...TD, fontWeight: 500, color: '#166534', whiteSpace: 'nowrap' }}>{fmtMoney(t.amount)}</td>
+                      <td style={{ ...TD, fontSize: '11px', color: 'var(--muted)' }}>{t.category}</td>
+                      <td style={{ ...TD, fontSize: '11px', color: 'var(--muted)' }}>{acctName(t.account_id)}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Expense */}
+        <div style={CARD}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={SECTION_LABEL}>Expense</div>
+            <button onClick={() => { setEditExpense(null); setShowExpenseModal(true) }} style={NEW_BTN('#A32D2D')}>+ New</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface)' }}>
+                  {['Date', 'Name', 'Amount', 'Category'].map(h => <th key={h} style={TH}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {monthExpenses.length === 0
+                  ? <tr><td colSpan={4} style={{ ...TD, textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>No expenses this month.</td></tr>
+                  : monthExpenses.map(e => (
+                    <tr key={e.id} style={{ cursor: 'pointer' }}
+                      onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--surface)')}
+                      onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
+                      onClick={() => { setEditExpense(e); setShowExpenseModal(true) }}
+                    >
+                      <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: '12px', color: 'var(--muted)' }}>{e.date.slice(5).replace('-', ' ')}</td>
+                      <td style={{ ...TD, fontWeight: 500 }}>{e.description}</td>
+                      <td style={{ ...TD, fontWeight: 500, color: '#A32D2D', whiteSpace: 'nowrap' }}>{fmtMoney(e.amount)}</td>
+                      <td style={{ ...TD, fontSize: '11px', color: 'var(--muted)' }}>{e.category}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      {showModal && (
+      {/* Modals */}
+      {showAccountModal && (
+        <AccountModal
+          account={editAccount ?? undefined}
+          onClose={() => { setShowAccountModal(false); setEditAccount(null) }}
+          onSaved={() => { setShowAccountModal(false); setEditAccount(null); load() }}
+        />
+      )}
+      {showIncomeModal && (
+        <IncomeTxModal
+          tx={editIncome ?? undefined}
+          accounts={accounts}
+          onClose={() => { setShowIncomeModal(false); setEditIncome(null) }}
+          onSaved={() => { setShowIncomeModal(false); setEditIncome(null); load() }}
+        />
+      )}
+      {showExpenseModal && (
         <ExpenseModal
-          expense={editing ?? undefined}
-          onClose={() => { setShowModal(false); setEditing(null) }}
-          onSaved={() => { setShowModal(false); setEditing(null); load() }}
+          expense={editExpense ?? undefined}
+          accounts={accounts}
+          onClose={() => { setShowExpenseModal(false); setEditExpense(null) }}
+          onSaved={() => { setShowExpenseModal(false); setEditExpense(null); load() }}
         />
       )}
     </>
