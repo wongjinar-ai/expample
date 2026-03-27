@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import TopTabBar, { type Tab } from '@/components/layout/TopTabBar'
 import BookingModal from '@/components/bookings/BookingModal'
@@ -1158,6 +1158,373 @@ function ShiftsTab() {
   )
 }
 
+// ─── AccountsTab ───────────────────────────────────────────────────────────────
+
+const EXPENSE_CATEGORIES = [
+  'Food & Beverage',
+  'Utilities',
+  'Maintenance & Repair',
+  'Cleaning Supplies',
+  'Staff & Wages',
+  'Marketing',
+  'Transport',
+  'Equipment',
+  'Other',
+] as const
+
+const EXPENSE_BUCKET = 'expense-receipts'
+
+interface Expense {
+  id: number
+  date: string
+  category: string
+  description: string
+  amount: number
+  paid_by: string
+  receipt_url?: string
+  notes: string
+  created_at: string
+}
+
+const EXPENSE_EMPTY = {
+  date: localDateStr(new Date()),
+  category: EXPENSE_CATEGORIES[0] as string,
+  description: '',
+  amount: 0,
+  paid_by: 'Cash',
+  receipt_url: '',
+  notes: '',
+}
+
+// ── ExpenseModal ──────────────────────────────────────────────────────────────
+
+interface ExpenseModalProps {
+  expense?: Expense
+  onClose: () => void
+  onSaved: () => void
+}
+
+function ExpenseModal({ expense, onClose, onSaved }: ExpenseModalProps) {
+  const [form, setForm] = useState({ ...EXPENSE_EMPTY, ...(expense ?? {}) })
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function set<K extends keyof typeof EXPENSE_EMPTY>(key: K, value: (typeof EXPENSE_EMPTY)[K]) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  async function viewReceipt() {
+    if (!expense?.receipt_url) return
+    const supabase = createClient()
+    const { data } = await supabase.storage.from(EXPENSE_BUCKET).createSignedUrl(expense.receipt_url, 3600)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  async function handleSave() {
+    if (!form.description.trim()) { setError('Description is required'); return }
+    if (!form.date) { setError('Date is required'); return }
+    if (form.amount <= 0) { setError('Amount must be greater than 0'); return }
+    setSaving(true)
+    setError('')
+    const supabase = createClient()
+
+    if (expense?.id) {
+      // Update
+      const { error: err } = await supabase.from('expenses').update({
+        date: form.date, category: form.category, description: form.description,
+        amount: form.amount, paid_by: form.paid_by, notes: form.notes,
+        updated_at: new Date().toISOString(),
+      }).eq('id', expense.id)
+      if (err) { setError(err.message); setSaving(false); return }
+
+      if (receiptFile) {
+        const ext = receiptFile.name.split('.').pop() ?? 'jpg'
+        const path = `${expense.id}/receipt.${ext}`
+        await supabase.storage.from(EXPENSE_BUCKET).upload(path, receiptFile, { upsert: true })
+        await supabase.from('expenses').update({ receipt_url: path }).eq('id', expense.id)
+      }
+    } else {
+      // Insert
+      const { data: inserted, error: err } = await supabase.from('expenses').insert({
+        date: form.date, category: form.category, description: form.description,
+        amount: form.amount, paid_by: form.paid_by, notes: form.notes,
+      }).select().single()
+      if (err || !inserted) { setError(err?.message ?? 'Insert failed'); setSaving(false); return }
+
+      if (receiptFile) {
+        const ext = receiptFile.name.split('.').pop() ?? 'jpg'
+        const path = `${inserted.id}/receipt.${ext}`
+        await supabase.storage.from(EXPENSE_BUCKET).upload(path, receiptFile, { upsert: true })
+        await supabase.from('expenses').update({ receipt_url: path }).eq('id', inserted.id)
+      }
+    }
+
+    onSaved()
+  }
+
+  async function handleDelete() {
+    if (!expense?.id) return
+    if (!confirm('Delete this expense?')) return
+    const supabase = createClient()
+    if (expense.receipt_url) {
+      await supabase.storage.from(EXPENSE_BUCKET).remove([expense.receipt_url])
+    }
+    await supabase.from('expenses').delete().eq('id', expense.id)
+    onSaved()
+  }
+
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  }
+  const modalStyle: React.CSSProperties = {
+    background: 'var(--surface)', border: '0.5px solid var(--border)',
+    borderRadius: '12px', padding: '24px', width: '480px', maxWidth: '95vw',
+    maxHeight: '90vh', overflowY: 'auto',
+  }
+  const labelStyle: React.CSSProperties = { fontSize: '11px', color: 'var(--muted)', marginBottom: '4px', display: 'block' }
+  const inputStyle: React.CSSProperties = {
+    ...INPUT_STYLE, width: '100%', boxSizing: 'border-box',
+  }
+  const rowStyle: React.CSSProperties = { marginBottom: '14px' }
+
+  return (
+    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={modalStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 500, margin: 0 }}>{expense?.id ? 'Edit Expense' : 'New Expense'}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>{error}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Date</label>
+            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inputStyle} />
+          </div>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Category</label>
+            <select value={form.category} onChange={e => set('category', e.target.value)} style={inputStyle}>
+              {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={rowStyle}>
+          <label style={labelStyle}>Description</label>
+          <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Breakfast ingredients" style={inputStyle} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Amount (฿)</label>
+            <input type="number" min={0} value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} placeholder="0" style={inputStyle} />
+          </div>
+          <div style={rowStyle}>
+            <label style={labelStyle}>Paid by</label>
+            <input value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Cash / Card / Name" style={inputStyle} />
+          </div>
+        </div>
+
+        <div style={rowStyle}>
+          <label style={labelStyle}>Notes (optional)</label>
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Any additional details…" style={{ ...inputStyle, resize: 'vertical' }} />
+        </div>
+
+        <div style={rowStyle}>
+          <label style={labelStyle}>Receipt</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px' }}>
+              {receiptFile ? `✓ ${receiptFile.name.slice(0, 20)}` : expense?.receipt_url ? '📷 Replace receipt' : '📷 Upload receipt'}
+            </button>
+            {expense?.receipt_url && !receiptFile && (
+              <button type="button" onClick={viewReceipt} style={{ ...ACTION_BTN, fontSize: '12px', padding: '5px 12px', color: '#185FA5' }}>View</button>
+            )}
+            <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '0.5px solid var(--border)' }}>
+          {expense?.id
+            ? <button onClick={handleDelete} style={{ ...ACTION_BTN, color: '#A32D2D', borderColor: '#A32D2D', fontSize: '12px', padding: '6px 14px' }}>Delete</button>
+            : <span />
+          }
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={onClose} style={{ ...ACTION_BTN, fontSize: '12px', padding: '6px 14px' }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...ACTION_BTN, background: saving ? 'var(--surface2)' : '#1E40AF', color: '#fff', borderColor: '#1E40AF', fontSize: '12px', padding: '6px 16px' }}>
+              {saving ? 'Saving…' : expense?.id ? 'Save Changes' : 'Add Expense'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AccountsTab() {
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<Expense | null>(null)
+  const [catFilter, setCatFilter] = useState('all')
+
+  const now = new Date()
+  const [selectedMonthNum, setSelectedMonthNum] = useState(() => now.getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(() => now.getFullYear())
+
+  const selectedMonth = `${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}`
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('expenses').select('*').order('date', { ascending: false })
+    setExpenses(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i)
+
+  const filtered = expenses.filter(e => e.date.startsWith(selectedMonth) && (catFilter === 'all' || e.category === catFilter))
+  const totalAmount = filtered.reduce((s, e) => s + e.amount, 0)
+
+  // Category breakdown (all in month, unaffected by catFilter)
+  const monthExpenses = expenses.filter(e => e.date.startsWith(selectedMonth))
+  const byCat: Record<string, number> = {}
+  for (const e of monthExpenses) byCat[e.category] = (byCat[e.category] ?? 0) + e.amount
+  const topCats = Object.entries(byCat).sort((a, b) => b[1] - a[1])
+
+  const CAT_COLORS: Record<string, string> = {
+    'Food & Beverage': '#166534',
+    'Utilities': '#1E40AF',
+    'Maintenance & Repair': '#92400E',
+    'Cleaning Supplies': '#065F46',
+    'Staff & Wages': '#6B21A8',
+    'Marketing': '#B45309',
+    'Transport': '#0F766E',
+    'Equipment': '#9F1239',
+    'Other': '#374151',
+  }
+
+  return (
+    <>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <select value={selectedMonthNum} onChange={e => setSelectedMonthNum(Number(e.target.value))} style={INPUT_STYLE}>
+            {MONTHS.map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
+          </select>
+          <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={INPUT_STYLE}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={INPUT_STYLE}>
+            <option value="all">All categories</option>
+            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={() => { setEditing(null); setShowModal(true) }}
+          style={{ ...ACTION_BTN, background: '#1E40AF', color: '#fff', borderColor: '#1E40AF', padding: '7px 16px', fontSize: '13px' }}
+        >+ Add Expense</button>
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: '10px', marginBottom: '1.5rem' }}>
+        <div style={METRIC_CARD}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Total expenses</div>
+          <div style={{ fontSize: '20px', fontWeight: 500, color: '#A32D2D' }}>{fmtMoney(monthExpenses.reduce((s, e) => s + e.amount, 0))}</div>
+        </div>
+        <div style={METRIC_CARD}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Transactions</div>
+          <div style={{ fontSize: '20px', fontWeight: 500, color: 'var(--text)' }}>{monthExpenses.length}</div>
+        </div>
+        {topCats.slice(0, 3).map(([cat, amt]) => (
+          <div key={cat} style={METRIC_CARD}>
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>{cat}</div>
+            <div style={{ fontSize: '18px', fontWeight: 500, color: CAT_COLORS[cat] ?? 'var(--text)' }}>{fmtMoney(amt)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Category breakdown bar */}
+      {topCats.length > 0 && (
+        <div style={{ ...CARD, marginBottom: '1rem' }}>
+          <div style={SECTION_LABEL}>Breakdown — {MONTHS[selectedMonthNum - 1]} {selectedYear}</div>
+          {topCats.map(([cat, amt]) => {
+            const pct = Math.round((amt / monthExpenses.reduce((s, e) => s + e.amount, 0)) * 100)
+            return (
+              <div key={cat} style={{ marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
+                  <span>{cat}</span>
+                  <span style={{ fontWeight: 500 }}>{fmtMoney(amt)} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({pct}%)</span></span>
+                </div>
+                <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '2px' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: CAT_COLORS[cat] ?? '#374151', borderRadius: '2px' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Expense table */}
+      <div style={CARD}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+          <div style={SECTION_LABEL}>Expenses — {filtered.length} record{filtered.length !== 1 ? 's' : ''}</div>
+          {catFilter !== 'all' && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Total: <strong style={{ color: '#A32D2D' }}>{fmtMoney(totalAmount)}</strong></span>}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--surface)' }}>
+                {['Date', 'Category', 'Description', 'Amount', 'Paid by', 'Receipt', 'Notes', ''].map(h => (
+                  <th key={h} style={TH}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--muted)' }}>Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>No expenses this month.</td></tr>
+              ) : filtered.map(e => (
+                <tr key={e.id}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--surface)')}
+                  onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
+                  onClick={() => { setEditing(e); setShowModal(true) }}
+                >
+                  <td style={TD}>{fmtDate(e.date)}</td>
+                  <td style={TD}><span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px', background: 'var(--surface2)', color: CAT_COLORS[e.category] ?? 'var(--text)' }}>{e.category}</span></td>
+                  <td style={TD}>{e.description}</td>
+                  <td style={{ ...TD, fontWeight: 500, color: '#A32D2D' }}>{fmtMoney(e.amount)}</td>
+                  <td style={{ ...TD, color: 'var(--muted)' }}>{e.paid_by}</td>
+                  <td style={TD}>{e.receipt_url ? <span style={{ fontSize: '11px', color: '#185FA5' }}>📷</span> : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}</td>
+                  <td style={{ ...TD, color: 'var(--muted)', fontSize: '12px', maxWidth: '160px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{e.notes || '—'}</td>
+                  <td style={TD}><button onClick={ev => { ev.stopPropagation(); setEditing(e); setShowModal(true) }} style={{ ...ACTION_BTN, padding: '3px 10px', fontSize: '11px' }}>Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showModal && (
+        <ExpenseModal
+          expense={editing ?? undefined}
+          onClose={() => { setShowModal(false); setEditing(null) }}
+          onSaved={() => { setShowModal(false); setEditing(null); load() }}
+        />
+      )}
+    </>
+  )
+}
+
 // ─── Root page (with useSearchParams — must be wrapped in Suspense) ─────────────
 
 function DashboardPageInner() {
@@ -1181,6 +1548,7 @@ function DashboardPageInner() {
         {activeTab === 'income'    && <IncomeTab />}
         {activeTab === 'cleaning'  && <CleaningTab />}
         {activeTab === 'shifts'    && <ShiftsTab />}
+        {activeTab === 'accounts'  && <AccountsTab />}
       </div>
     </div>
   )
