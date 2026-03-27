@@ -1185,8 +1185,8 @@ const INCOME_CATEGORIES = [
 
 const EXPENSE_BUCKET = 'expense-receipts'
 
-async function resizeToJpeg(file: File, maxPx: number, quality: number): Promise<Blob> {
-  const bitmap = await createImageBitmap(file)
+async function resizeToJpeg(blobOrFile: Blob, maxPx: number, quality: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(blobOrFile)
   let { width: w, height: h } = bitmap
   if (w > maxPx || h > maxPx) {
     if (w > h) { h = Math.round(h * maxPx / w); w = maxPx } else { w = Math.round(w * maxPx / h); h = maxPx }
@@ -1200,16 +1200,39 @@ async function resizeToJpeg(file: File, maxPx: number, quality: number): Promise
   )
 }
 
+// Convert HEIC to JPEG blob using heic2any (works in all browsers)
+async function heicToBlob(file: File): Promise<Blob> {
+  const heic2any = (await import('heic2any')).default
+  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 })
+  return Array.isArray(result) ? result[0] : result
+}
+
 // For storage upload — 2000px, high quality
 async function toJpegBlob(file: File): Promise<{ blob: Blob; ext: string }> {
   const isHEIC = /heic|heif/i.test(file.type + file.name)
   if (!isHEIC && !file.type.startsWith('image/')) return { blob: file, ext: file.name.split('.').pop() ?? 'bin' }
-  const blob = await resizeToJpeg(file, 2000, 0.88)
-  return { blob, ext: 'jpg' }
+  try {
+    const blob = await resizeToJpeg(file, 2000, 0.88)
+    return { blob, ext: 'jpg' }
+  } catch {
+    // Browser doesn't support native HEIC — use JS decoder
+    const jpeg = await heicToBlob(file)
+    const blob = await resizeToJpeg(jpeg, 2000, 0.88)
+    return { blob, ext: 'jpg' }
+  }
 }
 
-// For AI scan — 1200px, lower quality keeps payload small (~300-500KB)
+// For AI scan — 1200px max to keep payload small (~300–500 KB)
 async function toScanBlob(file: File): Promise<Blob> {
+  const isHEIC = /heic|heif/i.test(file.type + file.name)
+  if (isHEIC) {
+    try {
+      return await resizeToJpeg(file, 1200, 0.75)
+    } catch {
+      const jpeg = await heicToBlob(file)
+      return resizeToJpeg(jpeg, 1200, 0.75)
+    }
+  }
   return resizeToJpeg(file, 1200, 0.75)
 }
 
@@ -1395,6 +1418,8 @@ function IncomeTxModal({ tx, accounts, onClose, onSaved }: { tx?: IncomeTx; acco
 
 // ── ExpenseModal ───────────────────────────────────────────────────────────────
 
+interface ExpenseItem { name: string; qty: number; price: number }
+
 function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expense; accounts: Account[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
     date: expense?.date ?? localDateStr(new Date()),
@@ -1405,12 +1430,26 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
     notes: expense?.notes ?? '',
     account_id: expense?.account_id as number | undefined,
   })
+  const [items, setItems] = useState<ExpenseItem[]>([{ name: '', qty: 1, price: 0 }])
+  const [useItems, setUseItems] = useState(false)
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [scanning, setScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const itemsTotal = items.reduce((s, it) => s + it.qty * it.price, 0)
+
+  function addItem() {
+    if (items.length < 30) setItems(it => [...it, { name: '', qty: 1, price: 0 }])
+  }
+  function removeItem(i: number) {
+    setItems(it => it.length === 1 ? it : it.filter((_, idx) => idx !== i))
+  }
+  function setItem(i: number, key: keyof ExpenseItem, val: string | number) {
+    setItems(it => it.map((item, idx) => idx === i ? { ...item, [key]: val } : item))
+  }
 
   async function scanReceipt(file: File) {
     setScanning(true)
@@ -1461,10 +1500,16 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
   async function handleSave() {
     if (!form.description.trim()) { setError('Description is required'); return }
     if (!form.date) { setError('Date is required'); return }
-    if (form.amount <= 0) { setError('Amount must be greater than 0'); return }
+    const finalAmount = useItems ? itemsTotal : form.amount
+    if (finalAmount <= 0) { setError('Amount must be greater than 0'); return }
+    // Encode item list into notes if used
+    const itemSummary = useItems && items.some(it => it.name)
+      ? items.filter(it => it.name).map(it => `${it.name} x${it.qty} = ฿${it.qty * it.price}`).join('\n')
+      : ''
+    const finalNotes = itemSummary ? (form.notes ? itemSummary + '\n---\n' + form.notes : itemSummary) : form.notes
     setSaving(true); setError('')
     const supabase = createClient()
-    const payload = { date: form.date, category: form.category, description: form.description, amount: form.amount, paid_by: form.paid_by, notes: form.notes, account_id: form.account_id ?? null }
+    const payload = { date: form.date, category: form.category, description: form.description, amount: finalAmount, paid_by: form.paid_by, notes: finalNotes, account_id: form.account_id ?? null }
     let expId = expense?.id
     if (expId) {
       const { error: err } = await supabase.from('expenses').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', expId)
@@ -1515,11 +1560,47 @@ function ExpenseModal({ expense, accounts, onClose, onSaved }: { expense?: Expen
           <label style={M_LABEL}>Description</label>
           <input value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Watercity, Electricity bill" style={M_INPUT} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+        {/* Item list toggle */}
+        <div style={{ ...M_ROW, display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <label style={{ ...M_LABEL, margin: 0 }}>Item list</label>
+          <button type="button" onClick={() => setUseItems(v => !v)}
+            style={{ ...ACTION_BTN, fontSize: '11px', padding: '3px 10px', background: useItems ? '#1E40AF' : 'transparent', color: useItems ? '#fff' : 'var(--text)', borderColor: useItems ? '#1E40AF' : 'var(--border2)' }}>
+            {useItems ? 'On' : 'Off'}
+          </button>
+        </div>
+
+        {useItems ? (
+          <div style={{ ...M_ROW, background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 52px 80px 28px', gap: '6px', marginBottom: '6px' }}>
+              <span style={{ ...M_LABEL, margin: 0 }}>Item name</span>
+              <span style={{ ...M_LABEL, margin: 0, textAlign: 'center' }}>Qty</span>
+              <span style={{ ...M_LABEL, margin: 0, textAlign: 'right' }}>Price (฿)</span>
+              <span />
+            </div>
+            {items.map((it, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 52px 80px 28px', gap: '6px', marginBottom: '5px', alignItems: 'center' }}>
+                <input value={it.name} onChange={e => setItem(i, 'name', e.target.value)} placeholder={`Item ${i + 1}`} style={{ ...M_INPUT, padding: '4px 8px' }} />
+                <input type="number" min={1} value={it.qty || ''} onChange={e => setItem(i, 'qty', Number(e.target.value) || 1)} style={{ ...M_INPUT, padding: '4px 6px', textAlign: 'center' }} />
+                <input type="number" min={0} value={it.price || ''} onChange={e => setItem(i, 'price', Number(e.target.value))} placeholder="0" style={{ ...M_INPUT, padding: '4px 6px', textAlign: 'right' }} />
+                <button type="button" onClick={() => removeItem(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '14px', padding: '0' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--border)' }}>
+              <button type="button" onClick={addItem} disabled={items.length >= 30}
+                style={{ ...ACTION_BTN, fontSize: '11px', padding: '3px 10px' }}>
+                + Add item {items.length >= 30 ? '(max 30)' : `(${items.length}/30)`}
+              </button>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#A32D2D' }}>Total: {fmtMoney(itemsTotal)}</span>
+            </div>
+          </div>
+        ) : (
           <div style={M_ROW}>
             <label style={M_LABEL}>Amount (฿)</label>
             <input type="number" min={0} value={form.amount || ''} onChange={e => set('amount', Number(e.target.value))} placeholder="0" style={M_INPUT} />
           </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
           <div style={M_ROW}>
             <label style={M_LABEL}>Paid by</label>
             <input value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Cash / Card" style={M_INPUT} />
