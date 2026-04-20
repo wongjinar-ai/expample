@@ -9,8 +9,8 @@ import { createClient } from '@/lib/supabase/client'
 import { fmtDate, fmtMoney, calcNights, isStayingOn } from '@/lib/helpers'
 import { ROOMS, OCC_ROOMS, ROOM_TYPES, SOURCES, CLEAN_STATUSES } from '@/lib/constants'
 import type { Room, Status, CleanStatus, Source } from '@/lib/constants'
-import { TASKS } from '@/app/staff/tasks'
-import type { Assignee, Task } from '@/app/staff/tasks'
+import { TASKS, timeToSlot, SLOT_LABELS } from '@/app/staff/tasks'
+import type { Assignee, Task, SlotType } from '@/app/staff/tasks'
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
 
@@ -1093,6 +1093,8 @@ interface CustomTask {
   name: string
   section: 'Accommodation & Farm' | 'Kitchen' | 'Office'
   time: string
+  slot: SlotType
+  noDeadline: boolean
   instructions: string[]
   days: [Assignee, Assignee, Assignee, Assignee, Assignee, Assignee, Assignee]
 }
@@ -1128,8 +1130,8 @@ function saveTaskOverrides(overrides: Record<string, Assignee>) {
   saveHimmapunPatch({ taskOverrides: overrides })
 }
 
-function getAssigneeForCell(overrides: Record<string, Assignee>, weekStart: string, taskIdx: number, dayIdx: number): Assignee {
-  return overrides[overrideKey(weekStart, taskIdx, dayIdx)] ?? TASKS[taskIdx].days[dayIdx]
+function getAssigneeForCell(overrides: Record<string, Assignee>, weekStart: string, taskIdx: number, dayIdx: number, fallback?: Assignee): Assignee {
+  return overrides[overrideKey(weekStart, taskIdx, dayIdx)] ?? fallback ?? '-'
 }
 
 function isVisibleToRole(assignee: Assignee, role: ShiftRole): boolean {
@@ -1292,13 +1294,16 @@ function TaskDetailModal({ task, taskIdx, dayIdx, weekStart, role, onClose }: {
 
 // ─── Add Task Modal ───────────────────────────────────────────────────────────
 
+const SLOT_OPTIONS: SlotType[] = ['Morning', 'Mid day', 'Afternoon', 'Evening']
+
 function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('')
-  const [section, setSection] = useState<'Accommodation & Farm' | 'Kitchen' | 'Office'>('Accommodation & Farm')
-  const [time, setTime] = useState('9:00 AM')
+  const [name, setName]               = useState('')
+  const [section, setSection]         = useState<'Accommodation & Farm' | 'Kitchen' | 'Office'>('Accommodation & Farm')
+  const [slot, setSlot]               = useState<SlotType>('Morning')
+  const [noDeadline, setNoDeadline]   = useState(false)
   const [instructions, setInstructions] = useState('')
-  const [days, setDays] = useState<Assignee[]>(['KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC'])
-  const [saving, setSaving] = useState(false)
+  const [days, setDays]               = useState<Assignee[]>(['KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC'])
+  const [saving, setSaving]           = useState(false)
 
   function setDay(i: number, val: Assignee) {
     const next = [...days] as typeof days
@@ -1309,13 +1314,16 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   function save() {
     if (!name.trim()) return
     setSaving(true)
+    const noDeadlineDays: [Assignee, Assignee, Assignee, Assignee, Assignee, Assignee, Assignee] = ['-', '-', '-', '-', '-', '-', '-']
     const ct: CustomTask = {
       id: `custom_${Date.now()}`,
       name: name.trim(),
       section,
-      time,
+      time: SLOT_LABELS[slot],
+      slot,
+      noDeadline,
       instructions: instructions.split('\n').map(s => s.trim()).filter(Boolean),
-      days: days as [Assignee, Assignee, Assignee, Assignee, Assignee, Assignee, Assignee],
+      days: noDeadline ? noDeadlineDays : days as [Assignee, Assignee, Assignee, Assignee, Assignee, Assignee, Assignee],
     }
     const current = loadHimmapunState()
     saveHimmapunPatch({ customTasks: [...(current.customTasks ?? []), ct] })
@@ -1344,8 +1352,22 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Time</label>
-            <input value={time} onChange={e => setTime(e.target.value)} placeholder="9:00 AM" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Time slot</label>
+            <select value={slot} onChange={e => setSlot(e.target.value as SlotType)} style={{ ...INPUT_STYLE, width: '100%' }}>
+              {SLOT_OPTIONS.map(s => <option key={s} value={s}>{SLOT_LABELS[s]}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* No deadline toggle */}
+        <div style={{ marginBottom: '14px', background: noDeadline ? 'rgba(200,232,74,0.08)' : 'var(--bg)', border: `0.5px solid ${noDeadline ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '8px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          onClick={() => setNoDeadline(v => !v)}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: noDeadline ? 'var(--accent)' : 'var(--text)' }}>No fixed deadline</div>
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>Appears in &quot;No Deadline&quot; tab on staff portal — not tied to a specific day</div>
+          </div>
+          <div style={{ width: '36px', height: '20px', borderRadius: '10px', background: noDeadline ? 'var(--accent)' : 'var(--border2)', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
+            <div style={{ position: 'absolute', top: '2px', left: noDeadline ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
           </div>
         </div>
 
@@ -1354,19 +1376,21 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={4} placeholder={'Step 1\nStep 2\nStep 3'} style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: '12px' }} />
         </div>
 
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>Assign per day</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-            {DAY_LABELS.map((day, i) => (
-              <div key={i}>
-                <div style={{ fontSize: '10px', color: 'var(--muted)', textAlign: 'center', marginBottom: '3px' }}>{day}</div>
-                <select value={days[i]} onChange={e => setDay(i, e.target.value as Assignee)} style={{ ...INPUT_STYLE, padding: '4px 2px', fontSize: '11px', width: '100%' }}>
-                  {ALL_ASSIGNEES.map(a => <option key={a} value={a}>{a === '-' ? '—' : a}</option>)}
-                </select>
-              </div>
-            ))}
+        {!noDeadline && (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>Assign per day</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+              {DAY_LABELS.map((day, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: '10px', color: 'var(--muted)', textAlign: 'center', marginBottom: '3px' }}>{day}</div>
+                  <select value={days[i]} onChange={e => setDay(i, e.target.value as Assignee)} style={{ ...INPUT_STYLE, padding: '4px 2px', fontSize: '11px', width: '100%' }}>
+                    {ALL_ASSIGNEES.map(a => <option key={a} value={a}>{a === '-' ? '—' : a}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={ACTION_BTN}>Cancel</button>
@@ -1400,7 +1424,7 @@ function RoleOverviewPanel({ role, weekStart, weekDates, overrides, onOpenTask }
   ]
   const allTasksIndexed = allTasks.map((t, i) => ({ task: t, idx: i }))
   const visibleTasks = allTasksIndexed.filter(({ task, idx }) => {
-    const assignee = getAssigneeForCell(overrides, weekStart, idx, dayIdx)
+    const assignee = getAssigneeForCell(overrides, weekStart, idx, dayIdx, allTasks[idx]?.days[dayIdx])
     return isVisibleToRole(assignee, role)
   })
 
@@ -1478,7 +1502,7 @@ function RoleOverviewPanel({ role, weekStart, weekDates, overrides, onOpenTask }
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {sub && <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', background: sub.reviewStatus === 'approved' ? 'rgba(74,222,128,0.15)' : sub.reviewStatus === 'rejected' ? 'rgba(248,113,113,0.15)' : 'rgba(251,191,36,0.15)', color: sub.reviewStatus === 'approved' ? '#4ade80' : sub.reviewStatus === 'rejected' ? '#f87171' : '#fbbf24', fontWeight: 600 }}>📹 {sub.reviewStatus}</span>}
-                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{task.time}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{'slot' in task ? SLOT_LABELS[(task as CustomTask).slot] : SLOT_LABELS[timeToSlot(task.time)]}</span>
                     <span style={{ fontSize: '11px', color: 'var(--muted)' }}>›</span>
                   </div>
                 </div>
@@ -1558,6 +1582,7 @@ function ShiftsTab() {
   const [activeCell, setActiveCell] = useState<{ taskIdx: number; dayIdx: number } | null>(null)
   const [activeRole, setActiveRole] = useState<ShiftRole | null>(null)
   const [showAddTask, setShowAddTask] = useState(false)
+  const [hideRoutine, setHideRoutine] = useState(false)
   const [detailTask, setDetailTask] = useState<{ task: Task | CustomTask; taskIdx: number; dayIdx: number; role: ShiftRole } | null>(null)
   const [customTasks, setCustomTasks] = useState<CustomTask[]>(loadHimmapunState().customTasks ?? [])
 
@@ -1606,6 +1631,9 @@ function ShiftsTab() {
           <input type="date" value={weekStart}
             onChange={e => { const d = new Date(e.target.value + 'T00:00:00'); if (d.getDay() === 1) setWeekStart(e.target.value) }}
             style={{ ...INPUT_STYLE, fontSize: '12px' }} />
+          <button onClick={() => setHideRoutine(v => !v)} style={{ ...ACTION_BTN, fontSize: '12px', background: hideRoutine ? 'rgba(200,232,74,0.1)' : 'transparent', color: hideRoutine ? 'var(--accent)' : 'var(--muted)', borderColor: hideRoutine ? 'var(--accent)' : 'var(--border2)' }}>
+            {hideRoutine ? '✓ Routine hidden' : 'Hide routine'}
+          </button>
           <button onClick={resetAll} style={{ ...ACTION_BTN, color: '#f87171', borderColor: '#f87171', fontSize: '12px' }}>Reset all</button>
           <button onClick={() => setShowAddTask(true)} style={{ ...ACTION_BTN, background: 'var(--accent)', color: '#0e0f0e', border: 'none', fontWeight: 600, fontSize: '12px' }}>+ Add Task</button>
         </div>
@@ -1613,6 +1641,38 @@ function ShiftsTab() {
 
       {/* Video review panel */}
       <VideoReviewPanel />
+
+      {/* Overview Task panel */}
+      {(() => {
+        const overviewDayIdx = weekDates.indexOf(todayStr) >= 0 ? weekDates.indexOf(todayStr) : 0
+        const statusMap = loadHimmapunState().taskStatus ?? {}
+        return (
+          <div style={{ ...CARD, marginBottom: '14px' }}>
+            <div style={{ ...SECTION_LABEL, marginBottom: '10px' }}>Overview · {todayStr === weekDates[overviewDayIdx] ? 'Today' : DAY_LABELS[overviewDayIdx]}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+              {SHIFT_ROLES.map(r => {
+                const rc = roleColor(r)
+                const roleTasks = allTasks
+                  .map((t, idx) => ({ t, idx }))
+                  .filter(({ idx }) => isVisibleToRole(getAssigneeForCell(overrides, weekStart, idx, overviewDayIdx, allTasks[idx]?.days[overviewDayIdx]), r))
+                const doneCnt = roleTasks.filter(({ idx }) => statusMap[`${weekStart}_${r}_${idx}_${overviewDayIdx}`] === 'done').length
+                const total   = roleTasks.length
+                const pct     = total === 0 ? 0 : Math.round((doneCnt / total) * 100)
+                return (
+                  <div key={r} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '10px 12px', border: `0.5px solid ${rc.border}`, cursor: 'pointer' }}
+                    onClick={() => setActiveRole(activeRole === r ? null : r)}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: rc.color, marginBottom: '4px' }}>{r}</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{doneCnt}<span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 400 }}>/{total}</span></div>
+                    <div style={{ height: '3px', background: 'var(--border)', borderRadius: '2px', marginTop: '6px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: rc.color, borderRadius: '2px', transition: 'width 0.3s' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Role overview buttons */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -1674,7 +1734,10 @@ function ShiftsTab() {
 
           <tbody>
             {SECTIONS.map(section => {
-              const rows = allTasks.map((t, i) => ({ task: t, idx: i })).filter(({ task }) => task.section === section)
+              const visibleTasksForSection = allTasks
+                .map((t, i) => ({ task: t, idx: i }))
+                .filter(({ task, idx }) => task.section === section && !(hideRoutine && idx < TASKS.length))
+              const rows = visibleTasksForSection
               return rows.map(({ task, idx }, rowI) => (
                 <>
                   {rowI === 0 && (
@@ -1690,11 +1753,13 @@ function ShiftsTab() {
 
                     <td style={{ ...TD, position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 5, borderRight: '0.5px solid var(--border)', maxWidth: TASK_COL, fontSize: '12px' }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.name}>{task.name}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{task.time}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>
+                        {'slot' in task ? SLOT_LABELS[(task as CustomTask).slot] : SLOT_LABELS[timeToSlot(task.time)]}
+                      </div>
                     </td>
 
                     {weekDates.map((_, dayIdx) => {
-                      const assignee = getAssigneeForCell(overrides, weekStart, idx, dayIdx)
+                      const assignee = getAssigneeForCell(overrides, weekStart, idx, dayIdx, task.days[dayIdx])
                       const isNone = assignee === '-'
                       const st = assigneeBadgeStyle(assignee)
                       const isActive = activeCell?.taskIdx === idx && activeCell?.dayIdx === dayIdx

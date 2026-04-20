@@ -2,14 +2,24 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { TASKS } from './tasks'
+import { TASKS, timeToSlot, SLOT_LABELS } from './tasks'
 import type { Assignee } from './tasks'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Role = 'KTC' | 'ACF' | 'GM' | 'CEO'
 type TaskStatus = 'pending' | 'done' | 'skipped' | 'na'
-type AppTab = 'tasks' | 'schedule' | 'bookings' | 'settings'
+type AppTab = 'tasks' | 'schedule' | 'bookings' | 'no-deadline' | 'settings'
+
+interface NoDeadlineCustomTask {
+  id: string
+  name: string
+  section: 'Accommodation & Farm' | 'Kitchen' | 'Office'
+  slot?: string
+  time?: string
+  instructions: string[]
+  noDeadline?: boolean
+}
 
 interface AppState {
   weekStart: string
@@ -230,10 +240,11 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(state.weekStart, i))
 
   const tabs: { id: AppTab; label: string }[] = [
-    { id: 'tasks',    label: 'My Tasks' },
-    { id: 'schedule', label: 'Schedule' },
-    { id: 'bookings', label: 'This Week' },
-    { id: 'settings', label: 'Settings' },
+    { id: 'tasks',       label: 'My Tasks' },
+    { id: 'schedule',    label: 'Schedule' },
+    { id: 'bookings',    label: 'Guests' },
+    { id: 'no-deadline', label: 'No Deadline' },
+    { id: 'settings',    label: 'Settings' },
   ]
 
   return (
@@ -257,10 +268,11 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
       </nav>
 
       <div style={tab === 'schedule' ? { padding: '0', maxWidth: '100%' } : S.body}>
-        {tab === 'tasks'    && <TasksTab role={role} state={state} weekDates={weekDates} updateState={updateState} />}
-        {tab === 'schedule' && <ScheduleTab role={role} state={state} weekDates={weekDates} updateState={updateState} />}
-        {tab === 'bookings' && <BookingsTab weekDates={weekDates} />}
-        {tab === 'settings' && <SettingsTab role={role} state={state} updateState={updateState} />}
+        {tab === 'tasks'       && <TasksTab role={role} state={state} weekDates={weekDates} updateState={updateState} />}
+        {tab === 'schedule'    && <ScheduleTab role={role} state={state} weekDates={weekDates} updateState={updateState} />}
+        {tab === 'bookings'    && <BookingsTab initialWeekStart={state.weekStart} />}
+        {tab === 'no-deadline' && <NoDeadlineTab role={role} />}
+        {tab === 'settings'    && <SettingsTab role={role} state={state} updateState={updateState} />}
       </div>
     </div>
   )
@@ -392,7 +404,7 @@ function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus }: {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {isShared && <span style={{ ...S.pill, background: '#FEF9C3', color: '#92400E', fontSize: '10px' }}>shared</span>}
-          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{task.time}</span>
+          <span style={{ fontSize: '11px', color: '#9CA3AF' }}>{SLOT_LABELS[timeToSlot(task.time)]}</span>
         </div>
       </div>
       {expanded && (
@@ -523,7 +535,7 @@ function ScheduleTab({ role, state, weekDates, updateState }: {
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.name}>
                           {task.name}
                         </div>
-                        <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '2px' }}>{task.time}</div>
+                        <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '2px' }}>{SLOT_LABELS[timeToSlot(task.time)]}</div>
                       </td>
 
                       {/* Day cells */}
@@ -599,22 +611,27 @@ function ScheduleTab({ role, state, weekDates, updateState }: {
 
 // ─── Bookings Tab ─────────────────────────────────────────────────────────────
 
-function BookingsTab({ weekDates }: { weekDates: string[] }) {
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [loading, setLoading]   = useState(true)
+function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
+  const [weekStart, setWeekStart] = useState(initialWeekStart)
+  const [bookings, setBookings]   = useState<Booking[]>([])
+  const [loading, setLoading]     = useState(true)
+
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
+    const from = weekStart
+    const to   = addDays(weekStart, 6)
     const { data } = await supabase
       .from('bookings')
       .select('id,guest,guest2,room,checkin,checkout,nights,status,passport_url,passport_uploaded_at,guest2_passport_url,guest2_passport_uploaded_at,booking_ref')
-      .or(`and(checkin.gte.${weekDates[0]},checkin.lte.${weekDates[6]}),and(checkout.gte.${weekDates[0]},checkout.lte.${weekDates[6]})`)
+      .or(`and(checkin.gte.${from},checkin.lte.${to}),and(checkout.gt.${from},checkout.lte.${to})`)
       .in('status', ['Upcoming', 'Check-in', 'Occupied', 'Checkout'])
       .order('checkin')
     setBookings((data ?? []) as Booking[])
     setLoading(false)
-  }, [weekDates])
+  }, [weekStart])
 
   useEffect(() => { load() }, [load])
 
@@ -623,7 +640,18 @@ function BookingsTab({ weekDates }: { weekDates: string[] }) {
 
   return (
     <>
-      <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>This Week</div>
+      {/* Header + week navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <div style={{ fontSize: '16px', fontWeight: 700 }}>Himmapun Guests</div>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button onClick={() => setWeekStart(addDays(weekStart, -7))}
+            style={{ ...S.btn, padding: '6px 14px', fontSize: '18px', background: '#F3F4F6', color: '#374151', minHeight: '44px', lineHeight: 1 }}>‹</button>
+          <button onClick={() => setWeekStart(getMondayOf(new Date()))}
+            style={{ ...S.btn, padding: '6px 10px', fontSize: '11px', background: '#F3F4F6', color: '#6B7280', minHeight: '44px' }}>Today</button>
+          <button onClick={() => setWeekStart(addDays(weekStart, 7))}
+            style={{ ...S.btn, padding: '6px 14px', fontSize: '18px', background: '#F3F4F6', color: '#374151', minHeight: '44px', lineHeight: 1 }}>›</button>
+        </div>
+      </div>
       <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>
         {formatDay(weekDates[0])} – {formatDay(weekDates[6])}
       </div>
@@ -777,6 +805,116 @@ function PassportRow({ label, hasPhoto, uploadedAt, scanMsg, inputRef, onView, o
       <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
     </div>
+  )
+}
+
+// ─── No Deadline Tab ──────────────────────────────────────────────────────────
+
+function NoDeadlineTab({ role }: { role: Role }) {
+  const [tasks, setTasks]     = useState<NoDeadlineCustomTask[]>([])
+  const [status, setStatus]   = useState<Record<string, TaskStatus>>({})
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('himmapun_state')
+      if (!raw) return
+      const parsed = JSON.parse(raw) as {
+        customTasks?: NoDeadlineCustomTask[]
+        taskStatus?: Record<string, TaskStatus>
+      }
+      setTasks((parsed.customTasks ?? []).filter(t => t.noDeadline))
+      setStatus(parsed.taskStatus ?? {})
+    } catch {}
+  }, [])
+
+  function statusKey(taskId: string) { return `nodl_${role}_${taskId}` }
+
+  function setTaskStatus(taskId: string, val: TaskStatus) {
+    const k = statusKey(taskId)
+    const next = { ...status, [k]: val }
+    setStatus(next)
+    try {
+      const raw = localStorage.getItem('himmapun_state')
+      const parsed = raw ? JSON.parse(raw) as { taskStatus?: Record<string, TaskStatus> } : {}
+      localStorage.setItem('himmapun_state', JSON.stringify({ ...parsed, taskStatus: { ...(parsed.taskStatus ?? {}), [k]: val } }))
+    } catch {}
+  }
+
+  const sections = ['Accommodation & Farm', 'Kitchen', 'Office'] as const
+
+  const slotLabel = (t: NoDeadlineCustomTask) => {
+    if (t.slot) return t.slot
+    if (t.time) return SLOT_LABELS[timeToSlot(t.time)]
+    return ''
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div style={{ ...S.card, textAlign: 'center', padding: '48px 20px' }}>
+        <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
+        <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>No open tasks</div>
+        <div style={{ fontSize: '13px', color: '#6B7280' }}>Tasks without a deadline will appear here once GM or CEO adds them.</div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>No Deadline Tasks</div>
+      <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>Complete when ready — no fixed day assigned.</div>
+
+      {sections.map(section => {
+        const sectionTasks = tasks.filter(t => t.section === section)
+        if (sectionTasks.length === 0) return null
+        return (
+          <div key={section}>
+            <div style={S.sectionLabel}>{section}</div>
+            {sectionTasks.map(t => {
+              const k   = statusKey(t.id)
+              const s   = status[k] ?? 'pending'
+              const isDone   = s === 'done'
+              const isDimmed = s === 'skipped' || s === 'na'
+              const isOpen   = expanded === t.id
+              return (
+                <div key={t.id} style={{ ...S.card, padding: 0, overflow: 'hidden', opacity: isDimmed ? 0.55 : 1, border: isDone ? '1px solid #BBF7D0' : '1px solid transparent' }}>
+                  <div onClick={() => setExpanded(isOpen ? null : t.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', cursor: 'pointer', minHeight: '44px' }}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, background: isDone ? '#22C55E' : '#fff', border: isDone ? 'none' : '2px solid #D1D5DB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {isDone && <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1, fontSize: '14px', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#9CA3AF' : '#1a1a1a' }}>
+                      {t.name}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#9CA3AF', flexShrink: 0 }}>{slotLabel(t)}</span>
+                  </div>
+
+                  {isOpen && (
+                    <div style={{ borderTop: '1px solid #F3F4F6', padding: '12px 16px' }}>
+                      {t.instructions && t.instructions.length > 0 && (
+                        <ol style={{ margin: '0 0 12px', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {t.instructions.map((step, i) => (
+                            <li key={i} style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5 }}>{step}</li>
+                          ))}
+                        </ol>
+                      )}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <ActionBtn label="Done"  color="#22C55E" active={s === 'done'}    onClick={() => { setTaskStatus(t.id, s === 'done'    ? 'pending' : 'done');    setExpanded(null) }} />
+                        <ActionBtn label="Skip"  color="#F59E0B" active={s === 'skipped'} onClick={() => { setTaskStatus(t.id, s === 'skipped' ? 'pending' : 'skipped'); setExpanded(null) }} />
+                        <ActionBtn label="N/A"   color="#9CA3AF" active={s === 'na'}      onClick={() => { setTaskStatus(t.id, s === 'na'      ? 'pending' : 'na');      setExpanded(null) }} />
+                        {s !== 'pending' && (
+                          <ActionBtn label="Undo" color="#EF4444" active={false} onClick={() => { setTaskStatus(t.id, 'pending'); setExpanded(null) }} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </>
   )
 }
 

@@ -1,5 +1,27 @@
 export type Assignee = 'KTC' | 'ACF' | 'GM' | 'CEO' | 'Anyone Free' | 'All Staff' | '-'
 
+export type SlotType = 'Morning' | 'Mid day' | 'Afternoon' | 'Evening'
+
+export const SLOT_LABELS: Record<SlotType, string> = {
+  'Morning':   'Morning (7–11)',
+  'Mid day':   'Mid day (11–14)',
+  'Afternoon': 'Afternoon (14–18)',
+  'Evening':   'Evening (18–22)',
+}
+
+export function timeToSlot(time: string): SlotType {
+  const match = time.match(/(\d+)(?::\d+)?\s*(AM|PM)/i)
+  if (!match) return 'Morning'
+  let hour = parseInt(match[1])
+  const ampm = match[2].toUpperCase()
+  if (ampm === 'PM' && hour !== 12) hour += 12
+  if (ampm === 'AM' && hour === 12) hour = 0
+  if (hour < 11) return 'Morning'
+  if (hour < 14) return 'Mid day'
+  if (hour < 18) return 'Afternoon'
+  return 'Evening'
+}
+
 export interface Task {
   name: string
   section: 'Accommodation & Farm' | 'Kitchen' | 'Office'
