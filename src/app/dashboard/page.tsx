@@ -9,6 +9,8 @@ import { createClient } from '@/lib/supabase/client'
 import { fmtDate, fmtMoney, calcNights, isStayingOn } from '@/lib/helpers'
 import { ROOMS, OCC_ROOMS, ROOM_TYPES, SOURCES, CLEAN_STATUSES } from '@/lib/constants'
 import type { Room, Status, CleanStatus, Source } from '@/lib/constants'
+import { TASKS } from '@/app/staff/tasks'
+import type { Assignee } from '@/app/staff/tasks'
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
 
@@ -1038,123 +1040,232 @@ function CleaningTab() {
   )
 }
 
-// ─── ShiftsTab ─────────────────────────────────────────────────────────────────
+// ─── ShiftsTab — Weekly Task Planner ──────────────────────────────────────────
+
+const ALL_ASSIGNEES: Assignee[] = ['KTC', 'ACF', 'GM', 'CEO', 'Anyone Free', 'All Staff', '-']
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const SECTIONS = ['Accommodation & Farm', 'Kitchen', 'Office'] as const
+
+function getWeekMonday(): string {
+  const d = new Date()
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return localDateStr(d)
+}
+
+function addDaysLocal(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return localDateStr(d)
+}
+
+function fmtShortDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+function overrideKey(weekStart: string, taskIdx: number, dayIdx: number): string {
+  return `${weekStart}_${taskIdx}_${dayIdx}`
+}
+
+function loadTaskOverrides(): Record<string, Assignee> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem('himmapun_state')
+    if (!raw) return {}
+    return (JSON.parse(raw) as { taskOverrides?: Record<string, Assignee> }).taskOverrides ?? {}
+  } catch { return {} }
+}
+
+function saveTaskOverrides(overrides: Record<string, Assignee>) {
+  try {
+    const raw = localStorage.getItem('himmapun_state')
+    const state = raw ? JSON.parse(raw) as Record<string, unknown> : {}
+    localStorage.setItem('himmapun_state', JSON.stringify({ ...state, taskOverrides: overrides }))
+  } catch { /* ignore */ }
+}
+
+function getAssigneeForCell(overrides: Record<string, Assignee>, weekStart: string, taskIdx: number, dayIdx: number): Assignee {
+  return overrides[overrideKey(weekStart, taskIdx, dayIdx)] ?? TASKS[taskIdx].days[dayIdx]
+}
+
+function assigneeBadgeStyle(a: Assignee): { bg: string; color: string; border: string } {
+  if (a === 'KTC')         return { bg: 'rgba(13,70,140,0.18)',   color: '#60a5fa', border: 'rgba(96,165,250,0.3)' }
+  if (a === 'ACF')         return { bg: 'rgba(34,100,60,0.22)',   color: '#4ade80', border: 'rgba(74,222,128,0.3)' }
+  if (a === 'GM')          return { bg: 'rgba(8,80,65,0.22)',     color: '#2dd4bf', border: 'rgba(45,212,191,0.3)' }
+  if (a === 'CEO')         return { bg: 'rgba(90,70,220,0.18)',   color: '#a78bfa', border: 'rgba(167,139,250,0.3)' }
+  if (a === 'Anyone Free') return { bg: 'rgba(180,130,0,0.18)',   color: '#fbbf24', border: 'rgba(251,191,36,0.3)' }
+  if (a === 'All Staff')   return { bg: 'rgba(220,100,30,0.18)',  color: '#fb923c', border: 'rgba(251,146,60,0.3)' }
+  return { bg: 'transparent', color: 'var(--muted)', border: 'transparent' }
+}
 
 function ShiftsTab() {
-  const [staff, setStaff] = useState<StaffMember[]>([])
-  const [loading, setLoading] = useState(true)
-  const [shiftFilter, setShiftFilter] = useState('all')
-
   const todayStr = localDateStr(new Date())
-  const todayDayName = new Date(todayStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })
-  const todayShortLower = todayDayName.slice(0, 3).toLowerCase() as keyof StaffMember
+  const [weekStart, setWeekStart] = useState(getWeekMonday)
+  const [overrides, setOverrides] = useState<Record<string, Assignee>>(loadTaskOverrides)
+  const [activeCell, setActiveCell] = useState<{ taskIdx: number; dayIdx: number } | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const supabase = createClient()
-      const { data } = await supabase.from('staff').select('*').order('name')
-      setStaff(data ?? [])
-    } catch {
-      setStaff([])
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDaysLocal(weekStart, i))
+  const todayDayIdx = weekDates.indexOf(todayStr)
+
+  function setAssignee(taskIdx: number, dayIdx: number, value: Assignee) {
+    const key = overrideKey(weekStart, taskIdx, dayIdx)
+    const next = { ...overrides }
+    if (value === TASKS[taskIdx].days[dayIdx]) {
+      delete next[key]
+    } else {
+      next[key] = value
     }
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const weekDayKeys: (keyof StaffMember)[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-  const weekDayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-  const filteredStaff = staff.filter(s => {
-    if (shiftFilter === 'all') return true
-    return s.shift === shiftFilter
-  })
-
-  const todayStaff = staff.filter(s => {
-    const todayShift = s[todayShortLower]
-    return todayShift && todayShift !== 'Off'
-  })
-
-  if (loading) return <p style={{ color: 'var(--muted)', padding: '2rem' }}>Loading…</p>
-
-  if (staff.length === 0) {
-    return (
-      <div style={CARD}>
-        <p style={{ fontSize: '13px', color: 'var(--muted)', fontStyle: 'italic' }}>No staff records yet.</p>
-      </div>
-    )
+    setOverrides(next)
+    saveTaskOverrides(next)
+    setActiveCell(null)
   }
 
+  function resetAll() {
+    if (!confirm('Reset all task assignments to defaults for this week?')) return
+    setOverrides({})
+    saveTaskOverrides({})
+  }
+
+  const TASK_COL = 180
+
   return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-        <select value={shiftFilter} onChange={e => setShiftFilter(e.target.value)} style={INPUT_STYLE}>
-          <option value="all">All shifts</option>
-          <option value="Morning">Morning</option>
-          <option value="Evening">Evening</option>
-          <option value="Night">Night</option>
-        </select>
+    <div style={{ position: 'relative' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>Weekly Task Planner</div>
+          <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+            {fmtShortDate(weekStart)} – {fmtShortDate(weekDates[6])} · Tap any cell to reassign
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <label style={{ fontSize: '12px', color: 'var(--muted)' }}>Week of</label>
+          <input type="date" value={weekStart}
+            onChange={e => { const d = new Date(e.target.value + 'T00:00:00'); if (d.getDay() === 1) setWeekStart(e.target.value) }}
+            style={{ ...INPUT_STYLE, fontSize: '12px' }} />
+          <button onClick={resetAll}
+            style={{ ...ACTION_BTN, color: '#f87171', borderColor: '#f87171', fontSize: '12px' }}>
+            Reset all
+          </button>
+        </div>
       </div>
 
-      {/* Today's shifts */}
-      <div style={{ ...SECTION_LABEL, marginBottom: '10px' }}>Today — {todayDayName}</div>
-      {todayStaff.length === 0 ? (
-        <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '1rem' }}>No staff on shift today.</p>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: '10px', marginBottom: '1rem' }}>
-          {todayStaff.map(s => {
-            const shiftName = s[todayShortLower] as string
-            return (
-              <div key={s.id} style={{ background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 500 }}>{s.name}</div>
-                <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{s.role}</div>
-                <ShiftBadge shift={shiftName} />
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+        {ALL_ASSIGNEES.filter(a => a !== '-').map(a => {
+          const st = assigneeBadgeStyle(a)
+          return (
+            <span key={a} style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: st.bg, color: st.color, border: `0.5px solid ${st.border}`, fontWeight: 600 }}>
+              {a}
+            </span>
+          )
+        })}
+        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: 'transparent', color: 'var(--muted)', border: '0.5px dashed var(--border2)', fontWeight: 500 }}>
+          dashed = overridden
+        </span>
+      </div>
 
-      {/* Weekly rota */}
-      <div style={CARD}>
-        <div style={SECTION_LABEL}>Weekly rota</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--surface)' }}>
-                <th style={TH}>Name</th>
-                <th style={TH}>Role</th>
-                {weekDayLabels.map((d, i) => (
-                  <th key={d} style={{ ...TH, color: weekDayKeys[i] === todayShortLower ? '#185FA5' : undefined }}>{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStaff.map(s => (
-                <tr key={s.id}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <td style={{ ...TD, fontWeight: 500 }}>{s.name}</td>
-                  <td style={{ ...TD, color: 'var(--muted)' }}>{s.role}</td>
-                  {weekDayKeys.map(key => {
-                    const val = s[key] as string | undefined
-                    return (
-                      <td key={String(key)} style={TD}>
-                        {val && val !== 'Off'
-                          ? <ShiftBadge shift={val} />
-                          : <span style={{ fontSize: '12px', color: 'var(--muted2)' }}>Off</span>}
-                      </td>
-                    )
-                  })}
-                </tr>
+      {/* Table */}
+      <div style={{ overflowX: 'auto', borderRadius: '8px', border: '0.5px solid var(--border)' }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: `${TASK_COL + 90 * 7}px`, width: '100%' }}>
+          <thead>
+            <tr style={{ background: 'var(--surface2)' }}>
+              <th style={{ ...TH, width: TASK_COL, minWidth: TASK_COL, position: 'sticky', left: 0, background: 'var(--surface2)', zIndex: 10, borderRight: '0.5px solid var(--border)' }}>
+                Task
+              </th>
+              {weekDates.map((date, i) => (
+                <th key={date} style={{
+                  ...TH, textAlign: 'center', width: 90, minWidth: 90,
+                  color: i === todayDayIdx ? 'var(--accent)' : 'var(--muted)',
+                  background: i === todayDayIdx ? 'rgba(200,232,74,0.08)' : 'var(--surface2)',
+                }}>
+                  <div>{DAY_LABELS[i]}</div>
+                  <div style={{ fontWeight: 400, fontSize: '10px', marginTop: '1px', opacity: 0.7 }}>{fmtShortDate(date)}</div>
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+
+          <tbody>
+            {SECTIONS.map(section => {
+              const rows = TASKS.map((t, i) => ({ task: t, idx: i })).filter(({ task }) => task.section === section)
+              return rows.map(({ task, idx }, rowI) => (
+                <>
+                  {rowI === 0 && (
+                    <tr key={`sec-${section}`} style={{ background: 'rgba(200,232,74,0.05)' }}>
+                      <td colSpan={8} style={{ padding: '6px 12px', fontSize: '10px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase', position: 'sticky', left: 0 }}>
+                        {section}
+                      </td>
+                    </tr>
+                  )}
+                  <tr key={idx}
+                    style={{ borderBottom: '0.5px solid var(--border)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}>
+
+                    {/* Task name — sticky */}
+                    <td style={{ ...TD, position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 5, borderRight: '0.5px solid var(--border)', maxWidth: TASK_COL, fontSize: '12px' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.name}>
+                        {task.name}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{task.time}</div>
+                    </td>
+
+                    {/* Day cells */}
+                    {weekDates.map((_, dayIdx) => {
+                      const assignee = getAssigneeForCell(overrides, weekStart, idx, dayIdx)
+                      const isNone = assignee === '-'
+                      const st = assigneeBadgeStyle(assignee)
+                      const isActive = activeCell?.taskIdx === idx && activeCell?.dayIdx === dayIdx
+                      const isOverridden = !!overrides[overrideKey(weekStart, idx, dayIdx)]
+                      const isToday = dayIdx === todayDayIdx
+
+                      return (
+                        <td key={dayIdx} style={{ ...TD, textAlign: 'center', padding: '5px 4px', background: isToday ? 'rgba(200,232,74,0.04)' : undefined, position: 'relative' }}
+                          onClick={() => setActiveCell(isActive ? null : { taskIdx: idx, dayIdx })}>
+
+                          {isActive ? (
+                            <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', padding: '6px', zIndex: 100, minWidth: '130px' }}>
+                              {ALL_ASSIGNEES.map(opt => {
+                                const os = assigneeBadgeStyle(opt)
+                                const isCurrent = assignee === opt
+                                return (
+                                  <button key={opt}
+                                    onClick={e => { e.stopPropagation(); setAssignee(idx, dayIdx, opt) }}
+                                    style={{ display: 'block', width: '100%', padding: '7px 10px', textAlign: 'left', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: isCurrent ? 700 : 400, background: isCurrent ? os.bg : 'transparent', color: isCurrent ? os.color : 'var(--text)', marginBottom: '1px', fontFamily: 'var(--font-dm-sans)', }}>
+                                    {opt === '-' ? '— nobody —' : opt}
+                                    {opt === TASKS[idx].days[dayIdx] && <span style={{ fontSize: '10px', color: 'var(--muted)', marginLeft: '4px' }}>(default)</span>}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <span style={{
+                              display: 'inline-block', padding: '3px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                              background: isNone ? 'transparent' : st.bg, color: isNone ? 'var(--muted)' : st.color,
+                              border: isOverridden ? `1px dashed ${st.border}` : `0.5px solid ${isNone ? 'transparent' : st.border}`,
+                              minWidth: '52px',
+                            }}>
+                              {isNone ? '—' : assignee}
+                            </span>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                </>
+              ))
+            })}
+          </tbody>
+        </table>
       </div>
-    </>
+
+      {/* Close picker on outside click */}
+      {activeCell && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setActiveCell(null)} />
+      )}
+    </div>
   )
 }
 
