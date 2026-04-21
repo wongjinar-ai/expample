@@ -653,162 +653,164 @@ function ActionBtn({ label, color, active, onClick }: { label: string; color: st
   )
 }
 
-// ─── Monthly Roster Card ──────────────────────────────────────────────────────
+// ─── Weekly Roster Card ───────────────────────────────────────────────────────
+
+const ROLE_DEPT: Record<Role, string> = {
+  KTC: 'Kitchen', ACF: 'Accommodation', GM: 'Management', CEO: 'Management',
+}
 
 function MonthlyRosterCard({ role, state, updateState, T }: {
   role: Role; state: AppState; updateState: (p: Partial<AppState>) => void; T: TXType
 }) {
-  const today    = todayStr()
-  const canEdit  = role === 'GM' || role === 'CEO'
-  const [viewYM, setViewYM] = useState(() => today.slice(0, 7))
-  const [activeDay, setActiveDay] = useState<number | null>(null)
+  const today         = todayStr()
+  const canEdit       = role === 'GM' || role === 'CEO'
+  const currentMonday = getMondayOf(new Date())
+  const scrollRef     = useRef<HTMLDivElement>(null)
+  const currentRef    = useRef<HTMLDivElement>(null)
   const [leaveReqs, setLeaveReqs] = useState<LeaveRequest[]>([])
 
   useEffect(() => { setLeaveReqs(readLeaveRequests()) }, [])
+  useEffect(() => {
+    if (currentRef.current && scrollRef.current) {
+      const top = currentRef.current.offsetTop - 8
+      scrollRef.current.scrollTop = top
+    }
+  }, [])
 
-  const year  = parseInt(viewYM.slice(0, 4))
-  const month = parseInt(viewYM.slice(5)) - 1  // 0-indexed
+  // 4 weeks back + current + 52 weeks forward = 57 weeks
+  const weeks = Array.from({ length: 57 }, (_, i) => {
+    const d = new Date(currentMonday + 'T00:00:00')
+    d.setDate(d.getDate() + (i - 4) * 7)
+    return d.toISOString().slice(0, 10)
+  })
 
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7  // 0=Mon
-
-  const cells: (number | null)[] = []
-  for (let i = 0; i < firstDow; i++) cells.push(null)
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
-  while (cells.length % 7 !== 0) cells.push(null)
-
-  function dateStr(day: number): string {
-    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  function weekDates(monday: string): string[] {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday + 'T00:00:00')
+      d.setDate(d.getDate() + i)
+      return d.toISOString().slice(0, 10)
+    })
   }
 
-  function isOff(r: Role, day: number): boolean {
-    const dow = (new Date(year, month, day).getDay() + 6) % 7
+  function isOffOnDate(r: Role, ds: string): boolean {
+    const dow = (new Date(ds + 'T00:00:00').getDay() + 6) % 7
     if (state.dayOff[r].includes(dow)) return true
-    const ds = dateStr(day)
     return leaveReqs.some(lr => lr.role === r && lr.status === 'approved' && (lr.date === ds || lr.swapDate === ds))
   }
 
-  function isLeave(r: Role, day: number): boolean {
-    const ds = dateStr(day)
+  function isLeaveDate(r: Role, ds: string): boolean {
     return leaveReqs.some(lr => lr.role === r && lr.status === 'approved' && (lr.date === ds || lr.swapDate === ds))
   }
 
-  function toggleDayOff(r: Role, day: number) {
-    const dow = (new Date(year, month, day).getDay() + 6) % 7
-    const current = state.dayOff[r]
-    const next    = current.includes(dow) ? current.filter(d => d !== dow) : [...current, dow]
-    updateState({ dayOff: { ...state.dayOff, [r]: next } })
-    setActiveDay(null)
+  function toggleDow(r: Role, ds: string) {
+    if (!canEdit) return
+    const dow = (new Date(ds + 'T00:00:00').getDay() + 6) % 7
+    const cur = state.dayOff[r]
+    updateState({ dayOff: { ...state.dayOff, [r]: cur.includes(dow) ? cur.filter(d => d !== dow) : [...cur, dow] } })
   }
 
-  function prevMonth() {
-    const d = new Date(year, month - 1, 1)
-    setViewYM(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  function fmtWeekRange(monday: string, sunday: string): string {
+    const s = new Date(monday + 'T00:00:00')
+    const e = new Date(sunday + 'T00:00:00')
+    return `${s.getDate()} ${T.monthShort[s.getMonth()]} – ${e.getDate()} ${T.monthShort[e.getMonth()]} ${e.getFullYear()}`
   }
-  function nextMonth() {
-    const d = new Date(year, month + 1, 1)
-    setViewYM(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-
-  const weeks = Math.ceil(cells.length / 7)
 
   return (
     <div style={S.card}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-        <div style={{ fontWeight: 600, fontSize: '15px' }}>{T.monthlyRoster}</div>
-        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-          <button onClick={prevMonth} style={{ ...S.btn, padding: '5px 12px', background: '#F3F4F6', color: '#374151', fontSize: '16px', minHeight: '36px', lineHeight: 1 }}>‹</button>
-          <span style={{ fontSize: '13px', fontWeight: 600, minWidth: '130px', textAlign: 'center' }}>{T.months[month]} {year}</span>
-          <button onClick={nextMonth} style={{ ...S.btn, padding: '5px 12px', background: '#F3F4F6', color: '#374151', fontSize: '16px', minHeight: '36px', lineHeight: 1 }}>›</button>
-        </div>
-      </div>
+      <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '4px' }}>{T.monthlyRoster}</div>
+      <div style={{ fontSize: '11px', color: '#9CA3AF', marginBottom: '10px' }}>{T.rosterNote(canEdit)}</div>
 
-      {/* Role legend */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
-        {ROLES.map(r => {
-          const c = ROLE_COLORS[r]
-          return <span key={r} style={{ ...S.pill, background: c.bg, color: c.dark }}>{r} — {ROLE_NAMES[r]}</span>
+      {/* Scrollable weeks */}
+      <div ref={scrollRef} style={{ height: '68vh', overflowY: 'auto', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
+        {weeks.map(monday => {
+          const dates        = weekDates(monday)
+          const isCurrent    = monday === currentMonday
+          const weekLabel    = fmtWeekRange(monday, dates[6])
+
+          return (
+            <div key={monday} ref={isCurrent ? currentRef : undefined}
+              style={{ borderBottom: '2px solid #E5E7EB' }}>
+
+              {/* Week label row */}
+              <div style={{
+                padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '8px',
+                background: isCurrent ? '#E8F5E9' : '#F9FAFB',
+                borderBottom: '1px solid #E5E7EB',
+              }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: isCurrent ? NAV_GREEN : '#6B7280' }}>
+                  {weekLabel}
+                </span>
+                {isCurrent && (
+                  <span style={{ ...S.pill, background: NAV_GREEN, color: '#fff', fontSize: '9px', padding: '1px 6px' }}>
+                    {T.today}
+                  </span>
+                )}
+              </div>
+
+              {/* Table */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '460px' }}>
+                  <thead>
+                    <tr style={{ background: '#1B4332' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#fff', fontSize: '11px', fontWeight: 700, minWidth: '110px' }}>
+                        Person / Role
+                      </th>
+                      {T.dayShort.map((d, di) => {
+                        const isToday = dates[di] === today
+                        return (
+                          <th key={di} style={{ padding: '6px 4px', textAlign: 'center', color: isToday ? '#c8e84a' : '#a7c28a', fontSize: '11px', fontWeight: 700, width: '52px' }}>
+                            {d}
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ROLES.map((r, ri) => {
+                      const c = ROLE_COLORS[r]
+                      return (
+                        <tr key={r} style={{ background: c.bg + '55', borderTop: ri > 0 ? '1px solid rgba(255,255,255,0.7)' : 'none' }}>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: c.dark }}>{ROLE_NAMES[r]}</span>
+                            <span style={{ fontSize: '10px', color: '#9CA3AF', marginLeft: '4px' }}>· {ROLE_DEPT[r]}</span>
+                          </td>
+                          {dates.map((ds, di) => {
+                            const off    = isOffOnDate(r, ds)
+                            const isLv   = isLeaveDate(r, ds)
+                            const isTd   = ds === today
+                            return (
+                              <td key={di}
+                                onClick={() => toggleDow(r, ds)}
+                                style={{
+                                  padding: '5px 4px', textAlign: 'center',
+                                  borderLeft: '1px solid rgba(255,255,255,0.6)',
+                                  background: off ? '#FEE2E2' : isTd ? c.bg + 'cc' : c.bg + '88',
+                                  cursor: canEdit ? 'pointer' : 'default',
+                                  outline: isTd ? `2px solid ${NAV_GREEN}` : 'none',
+                                  outlineOffset: '-2px',
+                                }}>
+                                <span style={{
+                                  fontSize: '11px', fontWeight: 700,
+                                  color: off ? '#991B1B' : c.dark,
+                                  padding: isLv ? '1px 4px' : undefined,
+                                  border: isLv ? `1.5px dashed ${c.dark}` : 'none',
+                                  borderRadius: '3px',
+                                }}>
+                                  {off ? 'OFF' : 'ON'}
+                                </span>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         })}
       </div>
-
-      {/* Calendar */}
-      <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #F3F4F6' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '300px' }}>
-          <thead>
-            <tr style={{ background: '#F9FAFB' }}>
-              {T.dayShort.map(d => (
-                <th key={d} style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: 600, padding: '6px 2px', textAlign: 'center' }}>{d}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: weeks }, (_, wi) => (
-              <tr key={wi}>
-                {cells.slice(wi * 7, wi * 7 + 7).map((day, ci) => {
-                  if (!day) return <td key={ci} style={{ background: '#FAFAFA', minWidth: '40px' }} />
-                  const ds       = dateStr(day)
-                  const isToday  = ds === today
-                  const offRoles = ROLES.filter(r => isOff(r, day))
-                  const isActive = activeDay === day
-
-                  return (
-                    <td key={ci} style={{ padding: '2px', position: 'relative', borderLeft: '1px solid #F3F4F6', borderTop: wi > 0 ? '1px solid #F3F4F6' : 'none' }}>
-                      <div
-                        onClick={() => canEdit ? setActiveDay(isActive ? null : day) : undefined}
-                        style={{
-                          minHeight: '50px', padding: '3px 4px', borderRadius: '6px',
-                          background: isToday ? '#E8F5E9' : offRoles.length > 0 ? '#FEF9F9' : '#fff',
-                          border: isToday ? `1.5px solid ${NAV_GREEN}` : '1px solid transparent',
-                          cursor: canEdit ? 'pointer' : 'default',
-                        }}>
-                        <div style={{ fontSize: '11px', fontWeight: isToday ? 700 : 400, color: isToday ? NAV_GREEN : '#374151', marginBottom: '3px' }}>{day}</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                          {offRoles.map(r => {
-                            const c  = ROLE_COLORS[r]
-                            const lv = isLeave(r, day)
-                            return (
-                              <span key={r} style={{ fontSize: '9px', fontWeight: 700, padding: '1px 3px', borderRadius: '3px', background: c.bg, color: c.dark, border: lv ? `1px dashed ${c.dark}` : 'none' }}>{r}</span>
-                            )
-                          })}
-                        </div>
-                      </div>
-
-                      {/* GM/CEO edit popup */}
-                      {isActive && canEdit && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: '#fff', border: '1px solid #E5E7EB', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '10px', minWidth: '160px' }}>
-                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>
-                            {T.dayShort[(new Date(year, month, day).getDay() + 6) % 7]} {day} {T.monthShort[month]}
-                          </div>
-                          {ROLES.map(r => {
-                            const dow = (new Date(year, month, day).getDay() + 6) % 7
-                            const off = state.dayOff[r].includes(dow)
-                            const c   = ROLE_COLORS[r]
-                            return (
-                              <button key={r}
-                                onClick={e => { e.stopPropagation(); toggleDayOff(r, day) }}
-                                style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '7px 8px', borderRadius: '6px', border: 'none', background: off ? c.bg : '#F9FAFB', cursor: 'pointer', marginBottom: '3px', fontFamily: '"DM Sans", sans-serif' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: c.dark }}>{r}</span>
-                                <span style={{ fontSize: '11px', marginLeft: 'auto', color: off ? '#991B1B' : '#9CA3AF', fontWeight: 600 }}>{off ? 'OFF' : 'WORK'}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '8px' }}>{T.rosterNote(canEdit)}</div>
-
-      {activeDay !== null && canEdit && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setActiveDay(null)} />
-      )}
     </div>
   )
 }
