@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TASKS, timeToSlot, SLOT_LABELS } from './tasks'
 import type { Assignee } from './tasks'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Role = 'KTC' | 'ACF' | 'GM' | 'CEO'
+type Role       = 'KTC' | 'ACF' | 'GM' | 'CEO'
 type TaskStatus = 'pending' | 'done' | 'skipped' | 'na'
-type AppTab = 'tasks' | 'bookings' | 'settings'
+type AppTab     = 'tasks' | 'bookings' | 'settings'
+type Lang       = 'en' | 'th'
 
 interface NoDeadlineCustomTask {
   id: string
@@ -26,33 +27,133 @@ interface AppState {
   pins: Record<Role, string>
   dayOff: Record<Role, number[]>
   taskStatus: Record<string, TaskStatus>
-  taskOverrides: Record<string, Assignee> // key: `${weekStart}_${taskIdx}_${dayIdx}`
+  taskOverrides: Record<string, Assignee>
 }
 
 interface Booking {
   id: number
-  guest: string
-  guest2: string
-  room: string
-  checkin: string
-  checkout: string
-  nights: number
-  status: string
-  passport_url: string | null
-  passport_uploaded_at: string | null
-  guest2_passport_url: string | null
-  guest2_passport_uploaded_at: string | null
+  guest: string; guest2: string; room: string
+  checkin: string; checkout: string; nights: number; status: string
+  passport_url: string | null; passport_uploaded_at: string | null
+  guest2_passport_url: string | null; guest2_passport_uploaded_at: string | null
   booking_ref: string
 }
+
+interface LeaveRequest {
+  id: string
+  role: Role
+  type: 'day-off-change' | 'leave' | 'emergency'
+  date: string
+  swapDate?: string
+  reason: string
+  proofPath?: string
+  submittedAt: string
+  status: 'pending' | 'approved' | 'rejected'
+  reviewNote?: string
+}
+
+// ─── Translations ─────────────────────────────────────────────────────────────
+
+const TX = {
+  en: {
+    myTasks: 'My Tasks', guests: 'Guests', settings: 'Settings', signOut: 'Sign out',
+    yourDayOff: 'Your day off',
+    dayOffMsg: 'Enjoy your rest. The team has it covered today.',
+    done: 'Done', skip: 'Skip', na: 'N/A', undo: 'Undo',
+    remaining: 'Remaining', total: 'Total',
+    noTasksDay: 'No tasks assigned for this day.',
+    openTasks: 'Open tasks',
+    monthlyRoster: 'Monthly Roster',
+    rosterNote: (canEdit: boolean): string => canEdit ? 'Tap a day to toggle recurring day-off. Dashed = approved leave.' : 'Colored tags = day off · Dashed border = approved leave',
+    dayShort: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    monthShort: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    requestLeave: 'Request Leave / Day Off',
+    rulesBefore: '📋 Policy — please read before submitting',
+    rules: [
+      'Day-off change must be requested at least 30 days in advance.',
+      'Regular leave must be requested at least 7 days in advance.',
+      'Emergency leave: max 3 times per year · proof document required.',
+    ],
+    emergencyUsed: (n: number) => `Emergency leave used this year: ${n} / 3`,
+    iUnderstand: 'I understand — continue',
+    leaveType: 'Request type',
+    typeDayOff: 'Day-off change', typeLeave: 'Regular leave', typeEmergency: 'Emergency leave',
+    leaveDate: 'Date', swapDate: 'Swap with date', reason: 'Reason',
+    proofDoc: 'Upload proof (required)',
+    uploadFile: 'Upload file', fileUploaded: '✓ File uploaded',
+    submit: 'Submit Request', submitted: '✓ Request submitted',
+    validDayOff: (d: number) => `⚠ Must be at least 30 days from today (${d} more day${d !== 1 ? 's' : ''} needed)`,
+    validLeave: (d: number) => `⚠ Must be at least 7 days from today (${d} more day${d !== 1 ? 's' : ''} needed)`,
+    validEmergency: '⚠ You have used all 3 emergency leaves this year',
+    pendingRequests: 'Pending Requests', noPending: 'No pending requests.',
+    approve: 'Approve', reject: 'Reject', reviewNotePlaceholder: 'Optional note…',
+    myRequests: 'My Requests', noRequests: 'No requests yet.',
+    sPending: 'Pending', sApproved: 'Approved', sRejected: 'Rejected',
+    changePin: (r: string) => `Change Your PIN (${r})`,
+    newPin: 'New 4-digit PIN', savePIN: 'Save', pinSaved: '✓ PIN updated',
+    himmapunGuests: 'Himmapun Guests', today: 'Today',
+    loading: 'Loading…', noArrivals: 'No arrivals or departures this week.',
+    checkIn: '↓ Check-in', checkOut: '↑ Checkout',
+    nights: (n: number) => `${n} night${n !== 1 ? 's' : ''}`,
+    secondGuest: 'Second guest name (optional)', save: 'Save', view: 'View',
+    takeUpload: '📷 Take / Upload', replace: '📷 Replace',
+  },
+  th: {
+    myTasks: 'งานของฉัน', guests: 'แขก', settings: 'ตั้งค่า', signOut: 'ออกจากระบบ',
+    yourDayOff: 'วันหยุดของคุณ',
+    dayOffMsg: 'พักผ่อนให้เต็มที่ ทีมงานดูแลแทนแล้ว',
+    done: 'เสร็จ', skip: 'ข้าม', na: 'ไม่เกี่ยว', undo: 'ยกเลิก',
+    remaining: 'คงเหลือ', total: 'รวม',
+    noTasksDay: 'ไม่มีงานที่มอบหมายในวันนี้',
+    openTasks: 'งานเปิด',
+    monthlyRoster: 'ตารางงานรายเดือน',
+    rosterNote: (canEdit: boolean): string => canEdit ? 'แตะวันเพื่อเปิด/ปิดวันหยุดประจำ — เส้นประ = ลาที่อนุมัติแล้ว' : 'สีแสดงวันหยุด — เส้นประ = ลาที่อนุมัติ',
+    dayShort: ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'],
+    months: ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'],
+    monthShort: ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'],
+    requestLeave: 'ขอลา / เปลี่ยนวันหยุด',
+    rulesBefore: '📋 กฎระเบียบ — กรุณาอ่านก่อนส่ง',
+    rules: [
+      'เปลี่ยนวันหยุด: ต้องแจ้งล่วงหน้าอย่างน้อย 30 วัน',
+      'ลาพักร้อน: ต้องแจ้งล่วงหน้าอย่างน้อย 7 วัน',
+      'ลาฉุกเฉิน: ไม่เกิน 3 ครั้งต่อปี ต้องมีเอกสารหลักฐาน',
+    ],
+    emergencyUsed: (n: number) => `ลาฉุกเฉินที่ใช้ไปปีนี้: ${n} / 3`,
+    iUnderstand: 'รับทราบแล้ว — ดำเนินการต่อ',
+    leaveType: 'ประเภท',
+    typeDayOff: 'เปลี่ยนวันหยุด', typeLeave: 'ลาพักร้อน', typeEmergency: 'ลาฉุกเฉิน',
+    leaveDate: 'วันที่', swapDate: 'เปลี่ยนเป็นวันที่', reason: 'เหตุผล',
+    proofDoc: 'อัปโหลดหลักฐาน (จำเป็น)',
+    uploadFile: 'อัปโหลดไฟล์', fileUploaded: '✓ อัปโหลดแล้ว',
+    submit: 'ส่งคำขอ', submitted: '✓ ส่งคำขอแล้ว',
+    validDayOff: (d: number) => `⚠ ต้องแจ้งล่วงหน้าอีก ${d} วัน (ครบ 30 วัน)`,
+    validLeave: (d: number) => `⚠ ต้องแจ้งล่วงหน้าอีก ${d} วัน (ครบ 7 วัน)`,
+    validEmergency: '⚠ คุณใช้ลาฉุกเฉินครบ 3 ครั้งแล้วในปีนี้',
+    pendingRequests: 'คำขอรออนุมัติ', noPending: 'ไม่มีคำขอที่รออนุมัติ',
+    approve: 'อนุมัติ', reject: 'ปฏิเสธ', reviewNotePlaceholder: 'หมายเหตุ (ถ้ามี)…',
+    myRequests: 'คำขอของฉัน', noRequests: 'ยังไม่มีคำขอ',
+    sPending: 'รอดำเนินการ', sApproved: 'อนุมัติแล้ว', sRejected: 'ปฏิเสธ',
+    changePin: (r: string) => `เปลี่ยน PIN (${r})`,
+    newPin: 'PIN 4 หลักใหม่', savePIN: 'บันทึก', pinSaved: '✓ อัปเดต PIN แล้ว',
+    himmapunGuests: 'แขกหิมพานต์', today: 'วันนี้',
+    loading: 'กำลังโหลด…', noArrivals: 'ไม่มีการเช็คอิน/เอาท์ในสัปดาห์นี้',
+    checkIn: '↓ เช็คอิน', checkOut: '↑ เช็คเอาท์',
+    nights: (n: number) => `${n} คืน`,
+    secondGuest: 'ชื่อแขกคนที่ 2 (ถ้ามี)', save: 'บันทึก', view: 'ดู',
+    takeUpload: '📷 ถ่าย / อัปโหลด', replace: '📷 เปลี่ยน',
+  },
+}
+type TXType = typeof TX.en
+
+const LangCtx = createContext<Lang>('en')
+const useLang = () => useContext(LangCtx)
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROLES: Role[] = ['KTC', 'ACF', 'GM', 'CEO']
 const ROLE_NAMES: Record<Role, string> = { KTC: 'Kitchen Staff', ACF: 'Wan', GM: 'General Manager', CEO: 'Co-Owner' }
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const PASSPORT_BUCKET = 'booking-docs'
-
 const ALL_ASSIGNEES: Assignee[] = ['KTC', 'ACF', 'GM', 'CEO', 'Anyone Free', 'All Staff', '-']
 
 const ROLE_COLORS: Record<Role, { bg: string; tag: string; dark: string }> = {
@@ -137,13 +238,30 @@ function loadState(): AppState {
       taskStatus:    saved.taskStatus    ?? {},
       taskOverrides: saved.taskOverrides ?? {},
     }
-  } catch {
-    return { ...DEFAULT_STATE }
-  }
+  } catch { return { ...DEFAULT_STATE } }
 }
 
 function saveState(s: AppState) {
-  localStorage.setItem('himmapun_state', JSON.stringify(s))
+  try {
+    const raw = localStorage.getItem('himmapun_state')
+    const existing = raw ? JSON.parse(raw) : {}
+    localStorage.setItem('himmapun_state', JSON.stringify({ ...existing, ...s }))
+  } catch {}
+}
+
+function readLeaveRequests(): LeaveRequest[] {
+  try {
+    const raw = localStorage.getItem('himmapun_state')
+    return raw ? (JSON.parse(raw).leaveRequests ?? []) : []
+  } catch { return [] }
+}
+
+function writeLeaveRequests(reqs: LeaveRequest[]) {
+  try {
+    const raw = localStorage.getItem('himmapun_state')
+    const existing = raw ? JSON.parse(raw) : {}
+    localStorage.setItem('himmapun_state', JSON.stringify({ ...existing, leaveRequests: reqs }))
+  } catch {}
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -170,29 +288,45 @@ const S: Record<string, React.CSSProperties> = {
 
 function LoginScreen({ onLogin }: { onLogin: (role: Role) => void }) {
   const [selected, setSelected] = useState<Role | null>(null)
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState('')
-  const [state] = useState(loadState)
+  const [pin, setPin]           = useState('')
+  const [error, setError]       = useState('')
+  const [lang, setLang]         = useState<Lang>(() => (typeof window !== 'undefined' ? (localStorage.getItem('himmapun_lang') as Lang) : null) ?? 'en')
+  const [state]                 = useState(loadState)
 
   function attempt() {
-    if (!selected) { setError('Please choose your role first.'); return }
+    if (!selected) { setError(lang === 'en' ? 'Please choose your role first.' : 'กรุณาเลือกตำแหน่งก่อน'); return }
     if (pin === state.pins[selected]) {
       sessionStorage.setItem('staff_role', selected)
       onLogin(selected)
     } else {
-      setError('Incorrect PIN. Try again.')
+      setError(lang === 'en' ? 'Incorrect PIN. Try again.' : 'PIN ไม่ถูกต้อง กรุณาลองใหม่')
       setPin('')
     }
   }
 
+  function toggleLang() {
+    const next = lang === 'en' ? 'th' : 'en'
+    setLang(next)
+    localStorage.setItem('himmapun_lang', next)
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: NAV_GREEN, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      {/* Language toggle */}
+      <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+        <button onClick={toggleLang} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+          {lang === 'en' ? 'TH' : 'EN'}
+        </button>
+      </div>
+
       <div style={{ marginBottom: '32px', textAlign: 'center' }}>
         <div style={{ fontSize: '22px', fontWeight: 700, color: '#fff', fontFamily: '"Fraunces", serif' }}>Himmapun Retreat</div>
         <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', marginTop: '4px' }}>Staff Portal</div>
       </div>
       <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '360px' }}>
-        <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px', marginTop: 0 }}>Select your role</p>
+        <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px', marginTop: 0 }}>
+          {lang === 'en' ? 'Select your role' : 'เลือกตำแหน่งของคุณ'}
+        </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '20px' }}>
           {ROLES.map(r => {
             const c = ROLE_COLORS[r]
@@ -215,7 +349,7 @@ function LoginScreen({ onLogin }: { onLogin: (role: Role) => void }) {
           autoFocus />
         {error && <div style={{ background: '#FEF2F2', color: '#991B1B', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '10px' }}>{error}</div>}
         <button onClick={attempt} style={{ ...S.btn, background: NAV_GREEN, color: '#fff', width: '100%', padding: '13px' }}>
-          Enter Portal
+          {lang === 'en' ? 'Enter Portal' : 'เข้าสู่ระบบ'}
         </button>
       </div>
     </div>
@@ -225,9 +359,17 @@ function LoginScreen({ onLogin }: { onLogin: (role: Role) => void }) {
 // ─── App Shell ────────────────────────────────────────────────────────────────
 
 function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
-  const [tab, setTab] = useState<AppTab>('tasks')
+  const [tab, setTab]   = useState<AppTab>('tasks')
   const [state, setState] = useState<AppState>(loadState)
+  const [lang, setLang] = useState<Lang>(() => (typeof window !== 'undefined' ? (localStorage.getItem('himmapun_lang') as Lang) : null) ?? 'en')
   const c = ROLE_COLORS[role]
+  const T = TX[lang]
+
+  function toggleLang() {
+    const next = lang === 'en' ? 'th' : 'en'
+    setLang(next)
+    localStorage.setItem('himmapun_lang', next)
+  }
 
   function updateState(patch: Partial<AppState>) {
     setState(prev => {
@@ -240,50 +382,55 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(state.weekStart, i))
 
   const tabs: { id: AppTab; label: string }[] = [
-    { id: 'tasks',    label: 'My Tasks' },
-    { id: 'bookings', label: 'Guests' },
-    { id: 'settings', label: 'Settings' },
+    { id: 'tasks',    label: T.myTasks },
+    { id: 'bookings', label: T.guests },
+    { id: 'settings', label: T.settings },
   ]
 
   return (
-    <div style={S.page}>
-      <nav style={S.nav}>
-        <div style={S.navRow}>
-          <div style={{ fontFamily: '"Fraunces", serif', fontSize: '16px', fontWeight: 600 }}>Himmapun</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ ...S.pill, background: c.tag, color: c.dark }}>{role}</span>
-            <button onClick={onSignOut} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '5px 10px', fontSize: '12px', cursor: 'pointer' }}>Sign out</button>
+    <LangCtx.Provider value={lang}>
+      <div style={S.page}>
+        <nav style={S.nav}>
+          <div style={S.navRow}>
+            <div style={{ fontFamily: '"Fraunces", serif', fontSize: '16px', fontWeight: 600 }}>Himmapun</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button onClick={toggleLang} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: '6px', padding: '5px 10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                {lang === 'en' ? 'TH' : 'EN'}
+              </button>
+              <span style={{ ...S.pill, background: c.tag, color: c.dark }}>{role}</span>
+              <button onClick={onSignOut} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '5px 10px', fontSize: '12px', cursor: 'pointer' }}>{T.signOut}</button>
+            </div>
           </div>
-        </div>
-        <div style={S.tabBar}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ ...S.tab, ...(tab === t.id ? S.tabActive : {}) }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </nav>
+          <div style={S.tabBar}>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ ...S.tab, ...(tab === t.id ? S.tabActive : {}) }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
-      <div style={S.body}>
-        {tab === 'tasks'    && <TasksTab role={role} state={state} weekDates={weekDates} updateState={updateState} />}
-        {tab === 'bookings' && <BookingsTab initialWeekStart={state.weekStart} />}
-        {tab === 'settings' && <SettingsTab role={role} state={state} updateState={updateState} />}
+        <div style={S.body}>
+          {tab === 'tasks'    && <TasksTab role={role} state={state} weekDates={weekDates} updateState={updateState} T={T} />}
+          {tab === 'bookings' && <BookingsTab initialWeekStart={state.weekStart} T={T} />}
+          {tab === 'settings' && <SettingsTab role={role} state={state} updateState={updateState} T={T} />}
+        </div>
       </div>
-    </div>
+    </LangCtx.Provider>
   )
 }
 
 // ─── Tasks Tab ────────────────────────────────────────────────────────────────
 
-function TasksTab({ role, state, weekDates, updateState }: {
+function TasksTab({ role, state, weekDates, updateState, T }: {
   role: Role; state: AppState; weekDates: string[]
-  updateState: (p: Partial<AppState>) => void
+  updateState: (p: Partial<AppState>) => void; T: TXType
 }) {
-  const today = todayStr()
+  const today      = todayStr()
   const defaultDay = weekDates.includes(today) ? today : weekDates[0]
   const [selectedDate, setSelectedDate] = useState(defaultDay)
-  const dayIdx = weekDates.indexOf(selectedDate)
+  const dayIdx   = weekDates.indexOf(selectedDate)
   const isDayOff = state.dayOff[role].includes(dayIdx)
 
   const visibleTasks = TASKS.map((t, i) => ({ task: t, idx: i }))
@@ -310,7 +457,7 @@ function TasksTab({ role, state, weekDates, updateState }: {
       {/* Day strip */}
       <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px', scrollbarWidth: 'none' }}>
         {weekDates.map((date, i) => {
-          const off    = state.dayOff[role].includes(i)
+          const off     = state.dayOff[role].includes(i)
           const isToday = date === today
           const active  = date === selectedDate
           return (
@@ -321,7 +468,7 @@ function TasksTab({ role, state, weekDates, updateState }: {
               boxShadow: active ? '0 2px 8px rgba(27,67,50,0.3)' : '0 1px 3px rgba(0,0,0,0.06)',
               outline: isToday && !active ? `2px solid ${NAV_GREEN}` : 'none',
             }}>
-              <div style={{ fontSize: '11px', fontWeight: 600 }}>{DAY_NAMES[i]}</div>
+              <div style={{ fontSize: '11px', fontWeight: 600 }}>{T.dayShort[i]}</div>
               <div style={{ fontSize: '13px', marginTop: '2px' }}>{formatDay(date)}</div>
               {off && <div style={{ fontSize: '9px', marginTop: '2px', fontWeight: 700 }}>OFF</div>}
             </button>
@@ -332,16 +479,16 @@ function TasksTab({ role, state, weekDates, updateState }: {
       {isDayOff ? (
         <div style={{ ...S.card, textAlign: 'center', padding: '40px 20px' }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>🌿</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px' }}>Your day off</div>
-          <div style={{ fontSize: '14px', color: '#6B7280' }}>Enjoy your rest. The team has it covered today.</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px' }}>{T.yourDayOff}</div>
+          <div style={{ fontSize: '14px', color: '#6B7280' }}>{T.dayOffMsg}</div>
         </div>
       ) : (
         <>
           {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-            {[['Done', done, '#22C55E'], ['Remaining', remaining, '#F59E0B'], ['Total', total, '#1a1a1a']].map(([label, val, color]) => (
-              <div key={label as string} style={{ ...S.card, textAlign: 'center', marginBottom: 0, padding: '12px 8px' }}>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: color as string }}>{val}</div>
+            {([[T.done, done, '#22C55E'], [T.remaining, remaining, '#F59E0B'], [T.total, total, '#1a1a1a']] as [string, number, string][]).map(([label, val, color]) => (
+              <div key={label} style={{ ...S.card, textAlign: 'center', marginBottom: 0, padding: '12px 8px' }}>
+                <div style={{ fontSize: '24px', fontWeight: 700, color }}>{val}</div>
                 <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>{label}</div>
               </div>
             ))}
@@ -359,7 +506,7 @@ function TasksTab({ role, state, weekDates, updateState }: {
                 <div style={S.sectionLabel}>{section}</div>
                 {sectionTasks.map(({ task, idx }) => (
                   <TaskCard key={idx} task={task} taskIdx={idx} dayIdx={dayIdx}
-                    status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)} />
+                    status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)} T={T} />
                 ))}
               </div>
             )
@@ -367,23 +514,23 @@ function TasksTab({ role, state, weekDates, updateState }: {
 
           {visibleTasks.length === 0 && (
             <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>
-              No tasks assigned for this day.
+              {T.noTasksDay}
             </div>
           )}
 
-          <NoDeadlineSection role={role} state={state} updateState={updateState} />
+          <NoDeadlineSection role={role} state={state} updateState={updateState} T={T} />
         </>
       )}
     </>
   )
 }
 
-// ─── No Deadline Section (embedded in My Tasks) ───────────────────────────────
+// ─── No Deadline Section (inside My Tasks) ────────────────────────────────────
 
-function NoDeadlineSection({ role, state, updateState }: {
-  role: Role; state: AppState; updateState: (p: Partial<AppState>) => void
+function NoDeadlineSection({ role, state, updateState, T }: {
+  role: Role; state: AppState; updateState: (p: Partial<AppState>) => void; T: TXType
 }) {
-  const [tasks, setTasks] = useState<NoDeadlineCustomTask[]>([])
+  const [tasks, setTasks]       = useState<NoDeadlineCustomTask[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
@@ -412,7 +559,7 @@ function NoDeadlineSection({ role, state, updateState }: {
   return (
     <>
       <div style={{ ...S.sectionLabel, marginTop: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        Open tasks
+        {T.openTasks}
         <span style={{ ...S.pill, background: '#FEF9C3', color: '#92400E', fontSize: '10px' }}>{tasks.length}</span>
       </div>
       {tasks.map(t => {
@@ -427,9 +574,7 @@ function NoDeadlineSection({ role, state, updateState }: {
               <div style={{ width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, background: isDone ? '#22C55E' : '#fff', border: isDone ? 'none' : '2px solid #D1D5DB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {isDone && <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>✓</span>}
               </div>
-              <div style={{ flex: 1, fontSize: '14px', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#9CA3AF' : '#1a1a1a' }}>
-                {t.name}
-              </div>
+              <div style={{ flex: 1, fontSize: '14px', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#9CA3AF' : '#1a1a1a' }}>{t.name}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                 <span style={{ ...S.pill, background: '#F3F4F6', color: '#6B7280', fontSize: '10px' }}>no deadline</span>
                 <span style={{ fontSize: '11px', color: '#9CA3AF' }}>{slotLabel(t)}</span>
@@ -445,12 +590,10 @@ function NoDeadlineSection({ role, state, updateState }: {
                   </ol>
                 )}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <ActionBtn label="Done"  color="#22C55E" active={s === 'done'}    onClick={() => { setTaskStatus(t.id, s === 'done'    ? 'pending' : 'done');    setExpanded(null) }} />
-                  <ActionBtn label="Skip"  color="#F59E0B" active={s === 'skipped'} onClick={() => { setTaskStatus(t.id, s === 'skipped' ? 'pending' : 'skipped'); setExpanded(null) }} />
-                  <ActionBtn label="N/A"   color="#9CA3AF" active={s === 'na'}      onClick={() => { setTaskStatus(t.id, s === 'na'      ? 'pending' : 'na');      setExpanded(null) }} />
-                  {s !== 'pending' && (
-                    <ActionBtn label="Undo" color="#EF4444" active={false} onClick={() => { setTaskStatus(t.id, 'pending'); setExpanded(null) }} />
-                  )}
+                  <ActionBtn label={T.done}  color="#22C55E" active={s === 'done'}    onClick={() => { setTaskStatus(t.id, s === 'done'    ? 'pending' : 'done');    setExpanded(null) }} />
+                  <ActionBtn label={T.skip}  color="#F59E0B" active={s === 'skipped'} onClick={() => { setTaskStatus(t.id, s === 'skipped' ? 'pending' : 'skipped'); setExpanded(null) }} />
+                  <ActionBtn label={T.na}    color="#9CA3AF" active={s === 'na'}      onClick={() => { setTaskStatus(t.id, s === 'na'      ? 'pending' : 'na');      setExpanded(null) }} />
+                  {s !== 'pending' && <ActionBtn label={T.undo} color="#EF4444" active={false} onClick={() => { setTaskStatus(t.id, 'pending'); setExpanded(null) }} />}
                 </div>
               </div>
             )}
@@ -463,9 +606,9 @@ function NoDeadlineSection({ role, state, updateState }: {
 
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus }: {
+function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, T }: {
   task: typeof TASKS[number]; taskIdx: number; dayIdx: number
-  status: TaskStatus; onSetStatus: (s: TaskStatus) => void
+  status: TaskStatus; onSetStatus: (s: TaskStatus) => void; T: TXType
 }) {
   const [expanded, setExpanded] = useState(false)
   const assignee = task.days[dayIdx]
@@ -490,11 +633,11 @@ function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus }: {
       </div>
       {expanded && (
         <div style={{ display: 'flex', gap: '6px', padding: '0 16px 14px', borderTop: '1px solid #F3F4F6' }}>
-          <ActionBtn label="Done"  color="#22C55E" active={status === 'done'}    onClick={() => { onSetStatus(status === 'done'    ? 'pending' : 'done');    setExpanded(false) }} />
-          <ActionBtn label="Skip"  color="#F59E0B" active={status === 'skipped'} onClick={() => { onSetStatus(status === 'skipped' ? 'pending' : 'skipped'); setExpanded(false) }} />
-          <ActionBtn label="N/A"   color="#9CA3AF" active={status === 'na'}      onClick={() => { onSetStatus(status === 'na'      ? 'pending' : 'na');      setExpanded(false) }} />
+          <ActionBtn label={T.done}  color="#22C55E" active={status === 'done'}    onClick={() => { onSetStatus(status === 'done'    ? 'pending' : 'done');    setExpanded(false) }} />
+          <ActionBtn label={T.skip}  color="#F59E0B" active={status === 'skipped'} onClick={() => { onSetStatus(status === 'skipped' ? 'pending' : 'skipped'); setExpanded(false) }} />
+          <ActionBtn label={T.na}    color="#9CA3AF" active={status === 'na'}      onClick={() => { onSetStatus(status === 'na'      ? 'pending' : 'na');      setExpanded(false) }} />
           {status !== 'pending' && (
-            <ActionBtn label="Undo" color="#EF4444" active={false} onClick={() => { onSetStatus('pending'); setExpanded(false) }} />
+            <ActionBtn label={T.undo} color="#EF4444" active={false} onClick={() => { onSetStatus('pending'); setExpanded(false) }} />
           )}
         </div>
       )}
@@ -510,189 +653,469 @@ function ActionBtn({ label, color, active, onClick }: { label: string; color: st
   )
 }
 
-// ─── Schedule Tab ─────────────────────────────────────────────────────────────
+// ─── Monthly Roster Card ──────────────────────────────────────────────────────
 
-function ScheduleTab({ role, state, weekDates, updateState }: {
-  role: Role; state: AppState; weekDates: string[]
-  updateState: (p: Partial<AppState>) => void
+function MonthlyRosterCard({ role, state, updateState, T }: {
+  role: Role; state: AppState; updateState: (p: Partial<AppState>) => void; T: TXType
 }) {
-  const canEdit = role === 'GM' || role === 'CEO'
-  const [activeCell, setActiveCell] = useState<{ taskIdx: number; dayIdx: number } | null>(null)
-  const today = todayStr()
-  const sections = ['Accommodation & Farm', 'Kitchen', 'Office'] as const
+  const today    = todayStr()
+  const canEdit  = role === 'GM' || role === 'CEO'
+  const [viewYM, setViewYM] = useState(() => today.slice(0, 7))
+  const [activeDay, setActiveDay] = useState<number | null>(null)
+  const [leaveReqs, setLeaveReqs] = useState<LeaveRequest[]>([])
 
-  function setAssignee(taskIdx: number, dayIdx: number, value: Assignee) {
-    const key = overrideKey(state.weekStart, taskIdx, dayIdx)
-    const next = { ...state.taskOverrides }
-    if (value === TASKS[taskIdx].days[dayIdx]) {
-      delete next[key] // revert to default — no need to store
-    } else {
-      next[key] = value
-    }
-    updateState({ taskOverrides: next })
-    setActiveCell(null)
+  useEffect(() => { setLeaveReqs(readLeaveRequests()) }, [])
+
+  const year  = parseInt(viewYM.slice(0, 4))
+  const month = parseInt(viewYM.slice(5)) - 1  // 0-indexed
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7  // 0=Mon
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  function dateStr(day: number): string {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   }
 
-  function resetAll() {
-    if (!confirm('Reset all assignments to defaults for this week?')) return
-    updateState({ taskOverrides: {} })
+  function isOff(r: Role, day: number): boolean {
+    const dow = (new Date(year, month, day).getDay() + 6) % 7
+    if (state.dayOff[r].includes(dow)) return true
+    const ds = dateStr(day)
+    return leaveReqs.some(lr => lr.role === r && lr.status === 'approved' && (lr.date === ds || lr.swapDate === ds))
   }
 
-  const TASK_COL_W = 140
-  const DAY_COL_W  = 100
+  function isLeave(r: Role, day: number): boolean {
+    const ds = dateStr(day)
+    return leaveReqs.some(lr => lr.role === r && lr.status === 'approved' && (lr.date === ds || lr.swapDate === ds))
+  }
+
+  function toggleDayOff(r: Role, day: number) {
+    const dow = (new Date(year, month, day).getDay() + 6) % 7
+    const current = state.dayOff[r]
+    const next    = current.includes(dow) ? current.filter(d => d !== dow) : [...current, dow]
+    updateState({ dayOff: { ...state.dayOff, [r]: next } })
+    setActiveDay(null)
+  }
+
+  function prevMonth() {
+    const d = new Date(year, month - 1, 1)
+    setViewYM(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  function nextMonth() {
+    const d = new Date(year, month + 1, 1)
+    setViewYM(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const weeks = Math.ceil(cells.length / 7)
 
   return (
-    <div>
-      {/* Header bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#fff', borderBottom: '1px solid #E5E7EB', position: 'sticky', top: 104, zIndex: 40 }}>
-        <div>
-          <div style={{ fontSize: '14px', fontWeight: 700 }}>Weekly Task Planner</div>
-          <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '1px' }}>
-            {formatDay(weekDates[0])} – {formatDay(weekDates[6])}
-            {canEdit ? '  ·  Tap any cell to reassign' : '  ·  View only'}
-          </div>
+    <div style={S.card}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ fontWeight: 600, fontSize: '15px' }}>{T.monthlyRoster}</div>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <button onClick={prevMonth} style={{ ...S.btn, padding: '5px 12px', background: '#F3F4F6', color: '#374151', fontSize: '16px', minHeight: '36px', lineHeight: 1 }}>‹</button>
+          <span style={{ fontSize: '13px', fontWeight: 600, minWidth: '130px', textAlign: 'center' }}>{T.months[month]} {year}</span>
+          <button onClick={nextMonth} style={{ ...S.btn, padding: '5px 12px', background: '#F3F4F6', color: '#374151', fontSize: '16px', minHeight: '36px', lineHeight: 1 }}>›</button>
         </div>
-        {canEdit && (
-          <button onClick={resetAll} style={{ ...S.btn, fontSize: '12px', padding: '6px 12px', background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }}>
-            Reset all
-          </button>
-        )}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '8px 16px', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-        {ALL_ASSIGNEES.map(a => {
-          if (a === '-') return null
-          const st = assigneeStyle(a)
-          return <span key={a} style={{ ...S.pill, background: st.bg, color: st.text, fontSize: '10px' }}>{a}</span>
+      {/* Role legend */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        {ROLES.map(r => {
+          const c = ROLE_COLORS[r]
+          return <span key={r} style={{ ...S.pill, background: c.bg, color: c.dark }}>{r} — {ROLE_NAMES[r]}</span>
         })}
       </div>
 
-      {/* Scrollable table */}
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table style={{ borderCollapse: 'collapse', minWidth: `${TASK_COL_W + DAY_COL_W * 7}px`, width: '100%' }}>
-          {/* Column header */}
+      {/* Calendar */}
+      <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #F3F4F6' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '300px' }}>
           <thead>
-            <tr style={{ background: NAV_GREEN }}>
-              <th style={{ width: TASK_COL_W, minWidth: TASK_COL_W, padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#fff', position: 'sticky', left: 0, background: NAV_GREEN, zIndex: 10 }}>
-                Task
-              </th>
-              {weekDates.map((date, i) => (
-                <th key={date} style={{
-                  width: DAY_COL_W, minWidth: DAY_COL_W, padding: '8px 6px', textAlign: 'center', fontSize: '11px', fontWeight: 600, color: '#fff',
-                  background: date === today ? '#2D6A4F' : NAV_GREEN,
-                  outline: date === today ? '2px inset #C8E84A' : 'none',
-                }}>
-                  <div>{DAY_NAMES[i]}</div>
-                  <div style={{ fontWeight: 400, opacity: 0.8, marginTop: '1px' }}>{formatDay(date)}</div>
-                </th>
+            <tr style={{ background: '#F9FAFB' }}>
+              {T.dayShort.map(d => (
+                <th key={d} style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: 600, padding: '6px 2px', textAlign: 'center' }}>{d}</th>
               ))}
             </tr>
           </thead>
-
           <tbody>
-            {sections.map(section => {
-              const sectionTasks = TASKS.map((t, i) => ({ task: t, idx: i })).filter(({ task }) => task.section === section)
-              return (
-                <>
-                  {/* Section header row */}
-                  <tr key={`sec-${section}`} style={{ background: '#E8F5E9' }}>
-                    <td colSpan={8} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 700, color: '#1B4332', letterSpacing: '0.06em', textTransform: 'uppercase', position: 'sticky', left: 0 }}>
-                      {section}
-                    </td>
-                  </tr>
+            {Array.from({ length: weeks }, (_, wi) => (
+              <tr key={wi}>
+                {cells.slice(wi * 7, wi * 7 + 7).map((day, ci) => {
+                  if (!day) return <td key={ci} style={{ background: '#FAFAFA', minWidth: '40px' }} />
+                  const ds       = dateStr(day)
+                  const isToday  = ds === today
+                  const offRoles = ROLES.filter(r => isOff(r, day))
+                  const isActive = activeDay === day
 
-                  {sectionTasks.map(({ task, idx }) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #F3F4F6' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '')}>
-
-                      {/* Task name — sticky left */}
-                      <td style={{
-                        padding: '8px 12px', fontSize: '12px', fontWeight: 500, color: '#374151',
-                        position: 'sticky', left: 0, background: '#fff', zIndex: 5,
-                        borderRight: '1px solid #E5E7EB', maxWidth: TASK_COL_W,
-                      }}>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.name}>
-                          {task.name}
+                  return (
+                    <td key={ci} style={{ padding: '2px', position: 'relative', borderLeft: '1px solid #F3F4F6', borderTop: wi > 0 ? '1px solid #F3F4F6' : 'none' }}>
+                      <div
+                        onClick={() => canEdit ? setActiveDay(isActive ? null : day) : undefined}
+                        style={{
+                          minHeight: '50px', padding: '3px 4px', borderRadius: '6px',
+                          background: isToday ? '#E8F5E9' : offRoles.length > 0 ? '#FEF9F9' : '#fff',
+                          border: isToday ? `1.5px solid ${NAV_GREEN}` : '1px solid transparent',
+                          cursor: canEdit ? 'pointer' : 'default',
+                        }}>
+                        <div style={{ fontSize: '11px', fontWeight: isToday ? 700 : 400, color: isToday ? NAV_GREEN : '#374151', marginBottom: '3px' }}>{day}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                          {offRoles.map(r => {
+                            const c  = ROLE_COLORS[r]
+                            const lv = isLeave(r, day)
+                            return (
+                              <span key={r} style={{ fontSize: '9px', fontWeight: 700, padding: '1px 3px', borderRadius: '3px', background: c.bg, color: c.dark, border: lv ? `1px dashed ${c.dark}` : 'none' }}>{r}</span>
+                            )
+                          })}
                         </div>
-                        <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '2px' }}>{SLOT_LABELS[timeToSlot(task.time)]}</div>
-                      </td>
+                      </div>
 
-                      {/* Day cells */}
-                      {weekDates.map((date, dayIdx) => {
-                        const assignee = getAssignee(state, idx, dayIdx)
-                        const isOff    = assignee === '-'
-                        const st       = assigneeStyle(assignee)
-                        const isActive = activeCell?.taskIdx === idx && activeCell?.dayIdx === dayIdx
-                        const isOverridden = !!state.taskOverrides[overrideKey(state.weekStart, idx, dayIdx)]
-                        const isDayOff_col = state.dayOff['KTC'].includes(dayIdx) && state.dayOff['ACF'].includes(dayIdx) && state.dayOff['GM'].includes(dayIdx)
-
-                        return (
-                          <td key={dayIdx} style={{ padding: '4px', textAlign: 'center', verticalAlign: 'middle', background: isActive ? '#FFF9C4' : undefined }}
-                            onClick={() => {
-                              if (!canEdit) return
-                              setActiveCell(isActive ? null : { taskIdx: idx, dayIdx })
-                            }}>
-
-                            {isActive && canEdit ? (
-                              /* Inline picker */
-                              <div style={{ position: 'relative', zIndex: 20 }}>
-                                <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', background: '#fff', border: '1px solid #D1D5DB', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '6px', zIndex: 30, minWidth: '120px' }}>
-                                  {ALL_ASSIGNEES.map(opt => {
-                                    const os = assigneeStyle(opt)
-                                    const isCurrent = assignee === opt
-                                    return (
-                                      <button key={opt} onClick={e => { e.stopPropagation(); setAssignee(idx, dayIdx, opt) }}
-                                        style={{ display: 'block', width: '100%', padding: '7px 10px', textAlign: 'left', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: isCurrent ? 700 : 400, background: isCurrent ? os.bg : 'transparent', color: isCurrent ? os.text : '#374151', marginBottom: '2px', fontFamily: '"DM Sans", sans-serif' }}>
-                                        {opt === '-' ? '— nobody —' : opt}
-                                        {opt === TASKS[idx].days[dayIdx] && <span style={{ fontSize: '10px', color: '#9CA3AF', marginLeft: '4px' }}>(default)</span>}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                minWidth: '72px', padding: '5px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                                background: isOff ? '#F3F4F6' : st.bg, color: isOff ? '#D1D5DB' : st.text,
-                                cursor: canEdit ? 'pointer' : 'default',
-                                border: isOverridden ? '1.5px dashed currentColor' : '1px solid transparent',
-                                opacity: isDayOff_col ? 0.5 : 1,
-                              }}>
-                                {isOff ? '—' : assignee}
-                              </div>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </>
-              )
-            })}
+                      {/* GM/CEO edit popup */}
+                      {isActive && canEdit && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: '#fff', border: '1px solid #E5E7EB', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '10px', minWidth: '160px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>
+                            {T.dayShort[(new Date(year, month, day).getDay() + 6) % 7]} {day} {T.monthShort[month]}
+                          </div>
+                          {ROLES.map(r => {
+                            const dow = (new Date(year, month, day).getDay() + 6) % 7
+                            const off = state.dayOff[r].includes(dow)
+                            const c   = ROLE_COLORS[r]
+                            return (
+                              <button key={r}
+                                onClick={e => { e.stopPropagation(); toggleDayOff(r, day) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '7px 8px', borderRadius: '6px', border: 'none', background: off ? c.bg : '#F9FAFB', cursor: 'pointer', marginBottom: '3px', fontFamily: '"DM Sans", sans-serif' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: c.dark }}>{r}</span>
+                                <span style={{ fontSize: '11px', marginLeft: 'auto', color: off ? '#991B1B' : '#9CA3AF', fontWeight: 600 }}>{off ? 'OFF' : 'WORK'}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Close picker on outside click */}
-      {activeCell && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 15 }} onClick={() => setActiveCell(null)} />
+      <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '8px' }}>{T.rosterNote(canEdit)}</div>
+
+      {activeDay !== null && canEdit && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setActiveDay(null)} />
+      )}
+    </div>
+  )
+}
+
+// ─── Leave Request Card ───────────────────────────────────────────────────────
+
+function LeaveRequestCard({ role, T }: { role: Role; T: TXType }) {
+  const [rulesOK, setRulesOK]     = useState(false)
+  const [showRules, setShowRules] = useState(false)
+  const [leaveType, setLeaveType] = useState<LeaveRequest['type']>('leave')
+  const [date, setDate]           = useState('')
+  const [swapDate, setSwapDate]   = useState('')
+  const [reason, setReason]       = useState('')
+  const [proofPath, setProofPath] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted]   = useState(false)
+  const [myRequests, setMyRequests] = useState<LeaveRequest[]>([])
+  const proofRef = useRef<HTMLInputElement>(null)
+
+  function loadMine() {
+    setMyRequests(readLeaveRequests().filter(r => r.role === role))
+  }
+  useEffect(() => { loadMine() }, [role])
+
+  const thisYear = new Date().getFullYear().toString()
+  const emergencyUsed = myRequests.filter(r => r.type === 'emergency' && r.status === 'approved' && r.submittedAt.startsWith(thisYear)).length
+
+  function diffFromToday(d: string): number {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    return Math.floor((new Date(d + 'T00:00:00').getTime() - today.getTime()) / 86400000)
+  }
+
+  function validationMsg(): string {
+    if (!date) return ''
+    const diff = diffFromToday(date)
+    if (leaveType === 'day-off-change' && diff < 30) return T.validDayOff(30 - diff)
+    if (leaveType === 'leave'          && diff < 7)  return T.validLeave(7 - diff)
+    if (leaveType === 'emergency' && emergencyUsed >= 3) return T.validEmergency
+    return ''
+  }
+
+  function canSubmit(): boolean {
+    if (!date || !reason.trim()) return false
+    const diff = diffFromToday(date)
+    if (leaveType === 'day-off-change' && diff < 30) return false
+    if (leaveType === 'leave'          && diff < 7)  return false
+    if (leaveType === 'emergency' && emergencyUsed >= 3) return false
+    return true
+  }
+
+  async function uploadProof(file: File) {
+    const supabase = createClient()
+    const path     = `leave-proof/${role}_${Date.now()}_${file.name}`
+    const { error } = await supabase.storage.from('booking-docs').upload(path, file, { upsert: true })
+    if (!error) setProofPath(path)
+  }
+
+  function submitRequest() {
+    setSubmitting(true)
+    const req: LeaveRequest = {
+      id: `lr_${Date.now()}`,
+      role, type: leaveType, date,
+      swapDate: leaveType === 'day-off-change' ? swapDate : undefined,
+      reason: reason.trim(),
+      proofPath: proofPath || undefined,
+      submittedAt: new Date().toISOString(),
+      status: 'pending',
+    }
+    const existing = readLeaveRequests()
+    writeLeaveRequests([...existing, req])
+    setDate(''); setReason(''); setSwapDate(''); setProofPath('')
+    setSubmitted(true)
+    setSubmitting(false)
+    loadMine()
+    setTimeout(() => setSubmitted(false), 3000)
+  }
+
+  const valMsg = validationMsg()
+  const typeLabel = (t: LeaveRequest['type']) => t === 'day-off-change' ? T.typeDayOff : t === 'leave' ? T.typeLeave : T.typeEmergency
+  const statusLabel = (s: string) => s === 'approved' ? T.sApproved : s === 'rejected' ? T.sRejected : T.sPending
+  const statusColor = (s: string) => s === 'approved' ? '#166534' : s === 'rejected' ? '#991B1B' : '#92400E'
+  const statusBg    = (s: string) => s === 'approved' ? '#F0FDF4' : s === 'rejected' ? '#FEF2F2' : '#FFFBEB'
+
+  return (
+    <div style={S.card}>
+      <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '14px' }}>{T.requestLeave}</div>
+
+      {/* Rules — shown until acknowledged */}
+      {!rulesOK && (
+        <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400E', marginBottom: '10px' }}>{T.rulesBefore}</div>
+          <ul style={{ margin: '0 0 10px', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {T.rules.map((rule, i) => (
+              <li key={i} style={{ fontSize: '12px', color: '#78350F', lineHeight: 1.55 }}>{rule}</li>
+            ))}
+          </ul>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', marginBottom: '12px' }}>
+            {T.emergencyUsed(emergencyUsed)}
+          </div>
+          <button onClick={() => { setRulesOK(true); setShowRules(false) }}
+            style={{ ...S.btn, background: '#D97706', color: '#fff', fontSize: '13px', width: '100%', padding: '11px' }}>
+            {T.iUnderstand}
+          </button>
+        </div>
       )}
 
-      {canEdit && (
-        <div style={{ padding: '12px 16px', fontSize: '11px', color: '#9CA3AF' }}>
-          Dashed border = overridden from default · Changes apply immediately to staff&apos;s My Tasks.
+      {rulesOK && (
+        <>
+          {/* Collapsible rules reminder */}
+          <button onClick={() => setShowRules(v => !v)}
+            style={{ ...S.btn, background: '#FFFBEB', color: '#92400E', fontSize: '11px', padding: '5px 10px', marginBottom: '12px' }}>
+            📋 {showRules ? '▲' : '▼'} Rules
+          </button>
+          {showRules && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
+              {T.rules.map((r, i) => <div key={i} style={{ fontSize: '11px', color: '#78350F', marginBottom: '3px' }}>• {r}</div>)}
+              <div style={{ fontSize: '11px', color: '#92400E', fontWeight: 700, marginTop: '6px' }}>{T.emergencyUsed(emergencyUsed)}</div>
+            </div>
+          )}
+
+          {/* Type selector */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={S.label}>{T.leaveType}</label>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {(['day-off-change', 'leave', 'emergency'] as const).map(lt => {
+                const active = leaveType === lt
+                return (
+                  <button key={lt} onClick={() => setLeaveType(lt)}
+                    style={{ ...S.btn, fontSize: '12px', padding: '8px 12px', minHeight: '44px', background: active ? NAV_GREEN : '#F3F4F6', color: active ? '#fff' : '#374151', border: `1px solid ${active ? NAV_GREEN : '#E5E7EB'}` }}>
+                    {typeLabel(lt)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Date */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={S.label}>{T.leaveDate}</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} min={todayStr()} style={S.input} />
+          </div>
+
+          {leaveType === 'day-off-change' && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={S.label}>{T.swapDate}</label>
+              <input type="date" value={swapDate} onChange={e => setSwapDate(e.target.value)} min={todayStr()} style={S.input} />
+            </div>
+          )}
+
+          {/* Reason */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={S.label}>{T.reason}</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+              style={{ ...S.input, resize: 'vertical', fontFamily: '"DM Sans", sans-serif', fontSize: '14px' }} />
+          </div>
+
+          {/* Emergency proof */}
+          {leaveType === 'emergency' && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={S.label}>{T.proofDoc}</label>
+              <button onClick={() => proofRef.current?.click()}
+                style={{ ...S.btn, background: proofPath ? '#D1FAE5' : '#F3F4F6', color: proofPath ? '#065F46' : '#374151', fontSize: '13px', padding: '9px 14px', minHeight: '44px' }}>
+                {proofPath ? T.fileUploaded : T.uploadFile}
+              </button>
+              <input ref={proofRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadProof(f); e.target.value = '' }} />
+            </div>
+          )}
+
+          {valMsg && (
+            <div style={{ fontSize: '12px', color: '#DC2626', background: '#FEF2F2', padding: '8px 12px', borderRadius: '8px', marginBottom: '10px' }}>{valMsg}</div>
+          )}
+          {submitted && (
+            <div style={{ fontSize: '13px', color: '#166534', background: '#F0FDF4', padding: '10px 12px', borderRadius: '8px', marginBottom: '10px' }}>{T.submitted}</div>
+          )}
+
+          <button onClick={submitRequest} disabled={submitting || !canSubmit()}
+            style={{ ...S.btn, background: canSubmit() ? NAV_GREEN : '#D1D5DB', color: '#fff', width: '100%', padding: '13px', fontSize: '14px', opacity: canSubmit() ? 1 : 0.6 }}>
+            {submitting ? '…' : T.submit}
+          </button>
+        </>
+      )}
+
+      {/* My requests */}
+      {myRequests.length > 0 && (
+        <div style={{ marginTop: '20px' }}>
+          <div style={S.sectionLabel}>{T.myRequests}</div>
+          {myRequests.slice().reverse().map(req => (
+            <div key={req.id} style={{ background: '#F9FAFB', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px', border: '1px solid #F3F4F6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>{typeLabel(req.type)}</span>
+                <span style={{ ...S.pill, background: statusBg(req.status), color: statusColor(req.status), fontSize: '10px' }}>{statusLabel(req.status)}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>
+                {req.date}{req.swapDate ? ` ↔ ${req.swapDate}` : ''} · {req.reason}
+              </div>
+              {req.reviewNote && <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '4px', fontStyle: 'italic' }}>{req.reviewNote}</div>}
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
 }
 
+// ─── Pending Requests Card (GM / CEO only) ────────────────────────────────────
+
+function PendingRequestsCard({ T }: { T: TXType }) {
+  const [requests, setRequests] = useState<LeaveRequest[]>([])
+  const [reviewing, setReviewing] = useState<string | null>(null)
+  const [note, setNote]           = useState('')
+
+  function load() { setRequests(readLeaveRequests().filter(r => r.status === 'pending')) }
+  useEffect(() => { load() }, [])
+
+  function decide(id: string, decision: 'approved' | 'rejected') {
+    const all     = readLeaveRequests()
+    const updated = all.map(r => r.id === id ? { ...r, status: decision as LeaveRequest['status'], reviewNote: note } : r)
+    writeLeaveRequests(updated)
+    setReviewing(null); setNote(''); load()
+  }
+
+  const typeLabel = (t: LeaveRequest['type']) => t === 'day-off-change' ? T.typeDayOff : t === 'leave' ? T.typeLeave : T.typeEmergency
+
+  return (
+    <div style={S.card}>
+      <div style={{ fontWeight: 600, fontSize: '15px', marginBottom: '12px' }}>
+        {T.pendingRequests}{requests.length > 0 ? ` (${requests.length})` : ''}
+      </div>
+      {requests.length === 0 ? (
+        <div style={{ fontSize: '13px', color: '#9CA3AF' }}>{T.noPending}</div>
+      ) : (
+        requests.map(req => {
+          const c = ROLE_COLORS[req.role]
+          return (
+            <div key={req.id} style={{ background: '#F9FAFB', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ ...S.pill, background: c.bg, color: c.dark }}>{req.role}</span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{typeLabel(req.type)} · {req.date}{req.swapDate ? ` ↔ ${req.swapDate}` : ''}</div>
+                  <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px' }}>{req.reason}</div>
+                  <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
+                    {new Date(req.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+              {reviewing !== req.id ? (
+                <button onClick={() => setReviewing(req.id)}
+                  style={{ ...S.btn, fontSize: '12px', padding: '7px 14px', background: NAV_GREEN, color: '#fff', minHeight: '44px' }}>
+                  Review
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input value={note} onChange={e => setNote(e.target.value)} placeholder={T.reviewNotePlaceholder} style={S.input} />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => decide(req.id, 'approved')} style={{ ...S.btn, background: '#16A34A', color: '#fff', fontSize: '13px', flex: 1, minHeight: '44px' }}>✓ {T.approve}</button>
+                    <button onClick={() => decide(req.id, 'rejected')} style={{ ...S.btn, background: '#DC2626', color: '#fff', fontSize: '13px', flex: 1, minHeight: '44px' }}>✕ {T.reject}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+// ─── Settings Tab ─────────────────────────────────────────────────────────────
+
+function SettingsTab({ role, state, updateState, T }: {
+  role: Role; state: AppState; updateState: (p: Partial<AppState>) => void; T: TXType
+}) {
+  const [newPin, setNewPin]     = useState('')
+  const [pinSaved, setPinSaved] = useState(false)
+  const canManage = role === 'GM' || role === 'CEO'
+
+  function savePin() {
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) return
+    updateState({ pins: { ...state.pins, [role]: newPin } })
+    setNewPin(''); setPinSaved(true)
+    setTimeout(() => setPinSaved(false), 2000)
+  }
+
+  return (
+    <>
+      <MonthlyRosterCard role={role} state={state} updateState={updateState} T={T} />
+      {canManage && <PendingRequestsCard T={T} />}
+      <LeaveRequestCard role={role} T={T} />
+      <div style={S.card}>
+        <div style={{ fontWeight: 600, marginBottom: '10px' }}>{T.changePin(role)}</div>
+        <label style={S.label}>{T.newPin}</label>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input type="password" inputMode="numeric" maxLength={4} value={newPin}
+            onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            placeholder="••••" style={{ ...S.input, flex: 1, letterSpacing: '0.3em', textAlign: 'center', fontSize: '20px' }} />
+          <button onClick={savePin} style={{ ...S.btn, background: NAV_GREEN, color: '#fff', flexShrink: 0 }}>{T.savePIN}</button>
+        </div>
+        {pinSaved && <div style={{ color: '#166534', fontSize: '13px', marginTop: '8px' }}>{T.pinSaved}</div>}
+      </div>
+    </>
+  )
+}
+
 // ─── Bookings Tab ─────────────────────────────────────────────────────────────
 
-function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
+function BookingsTab({ initialWeekStart, T }: { initialWeekStart: string; T: TXType }) {
   const [weekStart, setWeekStart] = useState(initialWeekStart)
   const [bookings, setBookings]   = useState<Booking[]>([])
   const [loading, setLoading]     = useState(true)
@@ -721,14 +1144,13 @@ function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
 
   return (
     <>
-      {/* Header + week navigation */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <div style={{ fontSize: '16px', fontWeight: 700 }}>Himmapun Guests</div>
+        <div style={{ fontSize: '16px', fontWeight: 700 }}>{T.himmapunGuests}</div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button onClick={() => setWeekStart(addDays(weekStart, -7))}
             style={{ ...S.btn, padding: '6px 14px', fontSize: '18px', background: '#F3F4F6', color: '#374151', minHeight: '44px', lineHeight: 1 }}>‹</button>
           <button onClick={() => setWeekStart(getMondayOf(new Date()))}
-            style={{ ...S.btn, padding: '6px 10px', fontSize: '11px', background: '#F3F4F6', color: '#6B7280', minHeight: '44px' }}>Today</button>
+            style={{ ...S.btn, padding: '6px 10px', fontSize: '11px', background: '#F3F4F6', color: '#6B7280', minHeight: '44px' }}>{T.today}</button>
           <button onClick={() => setWeekStart(addDays(weekStart, 7))}
             style={{ ...S.btn, padding: '6px 14px', fontSize: '18px', background: '#F3F4F6', color: '#374151', minHeight: '44px', lineHeight: 1 }}>›</button>
         </div>
@@ -738,9 +1160,9 @@ function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
       </div>
 
       {loading ? (
-        <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>Loading…</div>
+        <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>{T.loading}</div>
       ) : bookings.length === 0 ? (
-        <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>No arrivals or departures this week.</div>
+        <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>{T.noArrivals}</div>
       ) : (
         weekDates.map((date, i) => {
           const ins  = checkIns[i]
@@ -748,9 +1170,9 @@ function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
           if (ins.length === 0 && outs.length === 0) return null
           return (
             <div key={date}>
-              <div style={S.sectionLabel}>{DAY_FULL[i]} · {formatDay(date)}</div>
-              {ins.map(b  => <BookingCard key={`in-${b.id}`}  booking={b} type="checkin"  onRefresh={load} />)}
-              {outs.map(b => <BookingCard key={`out-${b.id}`} booking={b} type="checkout" onRefresh={load} />)}
+              <div style={S.sectionLabel}>{T.dayShort[i]} · {formatDay(date)}</div>
+              {ins.map(b  => <BookingCard key={`in-${b.id}`}  booking={b} type="checkin"  onRefresh={load} T={T} />)}
+              {outs.map(b => <BookingCard key={`out-${b.id}`} booking={b} type="checkout" onRefresh={load} T={T} />)}
             </div>
           )
         })
@@ -761,7 +1183,7 @@ function BookingsTab({ initialWeekStart }: { initialWeekStart: string }) {
 
 // ─── Booking Card ─────────────────────────────────────────────────────────────
 
-function BookingCard({ booking, type, onRefresh }: { booking: Booking; type: 'checkin' | 'checkout'; onRefresh: () => void }) {
+function BookingCard({ booking, type, onRefresh, T }: { booking: Booking; type: 'checkin' | 'checkout'; onRefresh: () => void; T: TXType }) {
   const [expanded, setExpanded] = useState(false)
   const [guest2, setGuest2]     = useState(booking.guest2 ?? '')
   const [saving, setSaving]     = useState(false)
@@ -818,14 +1240,14 @@ function BookingCard({ booking, type, onRefresh }: { booking: Booking; type: 'ch
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span style={{ ...S.pill, background: badgeColor.bg, color: badgeColor.text }}>
-              {isCheckIn ? '↓ Check-in' : '↑ Checkout'}
+              {isCheckIn ? T.checkIn : T.checkOut}
             </span>
             <span style={{ fontSize: '13px', fontWeight: 700 }}>{booking.room}</span>
           </div>
           <div style={{ fontSize: '15px', fontWeight: 600 }}>{booking.guest}</div>
           {booking.guest2 && <div style={{ fontSize: '13px', color: '#6B7280' }}>{booking.guest2}</div>}
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '4px' }}>
-            {booking.checkin} → {booking.checkout} · {booking.nights} night{booking.nights !== 1 ? 's' : ''}
+            {booking.checkin} → {booking.checkout} · {T.nights(booking.nights)}
           </div>
         </div>
         <div style={{ fontSize: '18px', color: '#9CA3AF', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</div>
@@ -834,22 +1256,22 @@ function BookingCard({ booking, type, onRefresh }: { booking: Booking; type: 'ch
       {expanded && (
         <div style={{ borderTop: '1px solid #F3F4F6', padding: '14px 16px' }}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={S.label}>Second guest name (optional)</label>
+            <label style={S.label}>{T.secondGuest}</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input value={guest2} onChange={e => setGuest2(e.target.value)} placeholder="Full name" style={{ ...S.input, flex: 1 }} />
               <button onClick={saveGuest2} disabled={saving}
                 style={{ ...S.btn, background: NAV_GREEN, color: '#fff', padding: '10px 14px', fontSize: '13px', flexShrink: 0 }}>
-                {saving ? '…' : 'Save'}
+                {saving ? '…' : T.save}
               </button>
             </div>
           </div>
-          <PassportRow label={`${booking.guest}'s Passport`} hasPhoto={!!booking.passport_url}
+          <PassportRow label={`${booking.guest}'s ${T.takeUpload.includes('📷') ? 'Passport' : 'Passport'}`} hasPhoto={!!booking.passport_url}
             uploadedAt={booking.passport_uploaded_at} scanMsg={scanMsg} inputRef={p1Ref}
-            onView={() => viewPassport(1)} onFile={f => uploadPassport(f, 1)} />
+            onView={() => viewPassport(1)} onFile={f => uploadPassport(f, 1)} T={T} />
           {(booking.guest2 || guest2) && (
-            <PassportRow label={`${booking.guest2 || guest2}'s Passport`} hasPhoto={!!booking.guest2_passport_url}
+            <PassportRow label={`${booking.guest2 || guest2} Passport`} hasPhoto={!!booking.guest2_passport_url}
               uploadedAt={booking.guest2_passport_uploaded_at} scanMsg={scan2Msg} inputRef={p2Ref}
-              onView={() => viewPassport(2)} onFile={f => uploadPassport(f, 2)} />
+              onView={() => viewPassport(2)} onFile={f => uploadPassport(f, 2)} T={T} />
           )}
         </div>
       )}
@@ -859,9 +1281,9 @@ function BookingCard({ booking, type, onRefresh }: { booking: Booking; type: 'ch
 
 // ─── Passport Row ─────────────────────────────────────────────────────────────
 
-function PassportRow({ label, hasPhoto, uploadedAt, scanMsg, inputRef, onView, onFile }: {
+function PassportRow({ label, hasPhoto, uploadedAt, scanMsg, inputRef, onView, onFile, T }: {
   label: string; hasPhoto: boolean; uploadedAt: string | null; scanMsg: string
-  inputRef: React.RefObject<HTMLInputElement | null>; onView: () => void; onFile: (f: File) => void
+  inputRef: React.RefObject<HTMLInputElement | null>; onView: () => void; onFile: (f: File) => void; T: TXType
 }) {
   return (
     <div style={{ marginBottom: '14px' }}>
@@ -869,11 +1291,11 @@ function PassportRow({ label, hasPhoto, uploadedAt, scanMsg, inputRef, onView, o
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => inputRef.current?.click()}
           style={{ ...S.btn, background: '#F3F4F6', color: '#1a1a1a', fontSize: '13px', padding: '9px 14px', minHeight: '44px' }}>
-          {hasPhoto ? '📷 Replace' : '📷 Take / Upload'}
+          {hasPhoto ? T.replace : T.takeUpload}
         </button>
         {hasPhoto && (
           <button onClick={onView} style={{ ...S.btn, background: '#EFF6FF', color: '#1E40AF', fontSize: '13px', padding: '9px 14px', minHeight: '44px' }}>
-            View
+            {T.view}
           </button>
         )}
         {scanMsg && <span style={{ fontSize: '12px', color: scanMsg.startsWith('✓') ? '#166534' : '#6B7280' }}>{scanMsg}</span>}
@@ -886,186 +1308,6 @@ function PassportRow({ label, hasPhoto, uploadedAt, scanMsg, inputRef, onView, o
       <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
     </div>
-  )
-}
-
-// ─── No Deadline Tab ──────────────────────────────────────────────────────────
-
-function NoDeadlineTab({ role }: { role: Role }) {
-  const [tasks, setTasks]     = useState<NoDeadlineCustomTask[]>([])
-  const [status, setStatus]   = useState<Record<string, TaskStatus>>({})
-  const [expanded, setExpanded] = useState<string | null>(null)
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('himmapun_state')
-      if (!raw) return
-      const parsed = JSON.parse(raw) as {
-        customTasks?: NoDeadlineCustomTask[]
-        taskStatus?: Record<string, TaskStatus>
-      }
-      setTasks((parsed.customTasks ?? []).filter(t => t.noDeadline))
-      setStatus(parsed.taskStatus ?? {})
-    } catch {}
-  }, [])
-
-  function statusKey(taskId: string) { return `nodl_${role}_${taskId}` }
-
-  function setTaskStatus(taskId: string, val: TaskStatus) {
-    const k = statusKey(taskId)
-    const next = { ...status, [k]: val }
-    setStatus(next)
-    try {
-      const raw = localStorage.getItem('himmapun_state')
-      const parsed = raw ? JSON.parse(raw) as { taskStatus?: Record<string, TaskStatus> } : {}
-      localStorage.setItem('himmapun_state', JSON.stringify({ ...parsed, taskStatus: { ...(parsed.taskStatus ?? {}), [k]: val } }))
-    } catch {}
-  }
-
-  const sections = ['Accommodation & Farm', 'Kitchen', 'Office'] as const
-
-  const slotLabel = (t: NoDeadlineCustomTask) => {
-    if (t.slot) return t.slot
-    if (t.time) return SLOT_LABELS[timeToSlot(t.time)]
-    return ''
-  }
-
-  if (tasks.length === 0) {
-    return (
-      <div style={{ ...S.card, textAlign: 'center', padding: '48px 20px' }}>
-        <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
-        <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>No open tasks</div>
-        <div style={{ fontSize: '13px', color: '#6B7280' }}>Tasks without a deadline will appear here once GM or CEO adds them.</div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>No Deadline Tasks</div>
-      <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '16px' }}>Complete when ready — no fixed day assigned.</div>
-
-      {sections.map(section => {
-        const sectionTasks = tasks.filter(t => t.section === section)
-        if (sectionTasks.length === 0) return null
-        return (
-          <div key={section}>
-            <div style={S.sectionLabel}>{section}</div>
-            {sectionTasks.map(t => {
-              const k   = statusKey(t.id)
-              const s   = status[k] ?? 'pending'
-              const isDone   = s === 'done'
-              const isDimmed = s === 'skipped' || s === 'na'
-              const isOpen   = expanded === t.id
-              return (
-                <div key={t.id} style={{ ...S.card, padding: 0, overflow: 'hidden', opacity: isDimmed ? 0.55 : 1, border: isDone ? '1px solid #BBF7D0' : '1px solid transparent' }}>
-                  <div onClick={() => setExpanded(isOpen ? null : t.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', cursor: 'pointer', minHeight: '44px' }}>
-                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, background: isDone ? '#22C55E' : '#fff', border: isDone ? 'none' : '2px solid #D1D5DB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {isDone && <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>✓</span>}
-                    </div>
-                    <div style={{ flex: 1, fontSize: '14px', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#9CA3AF' : '#1a1a1a' }}>
-                      {t.name}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#9CA3AF', flexShrink: 0 }}>{slotLabel(t)}</span>
-                  </div>
-
-                  {isOpen && (
-                    <div style={{ borderTop: '1px solid #F3F4F6', padding: '12px 16px' }}>
-                      {t.instructions && t.instructions.length > 0 && (
-                        <ol style={{ margin: '0 0 12px', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {t.instructions.map((step, i) => (
-                            <li key={i} style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5 }}>{step}</li>
-                          ))}
-                        </ol>
-                      )}
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <ActionBtn label="Done"  color="#22C55E" active={s === 'done'}    onClick={() => { setTaskStatus(t.id, s === 'done'    ? 'pending' : 'done');    setExpanded(null) }} />
-                        <ActionBtn label="Skip"  color="#F59E0B" active={s === 'skipped'} onClick={() => { setTaskStatus(t.id, s === 'skipped' ? 'pending' : 'skipped'); setExpanded(null) }} />
-                        <ActionBtn label="N/A"   color="#9CA3AF" active={s === 'na'}      onClick={() => { setTaskStatus(t.id, s === 'na'      ? 'pending' : 'na');      setExpanded(null) }} />
-                        {s !== 'pending' && (
-                          <ActionBtn label="Undo" color="#EF4444" active={false} onClick={() => { setTaskStatus(t.id, 'pending'); setExpanded(null) }} />
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
-    </>
-  )
-}
-
-// ─── Settings Tab ─────────────────────────────────────────────────────────────
-
-function SettingsTab({ role, state, updateState }: {
-  role: Role; state: AppState; updateState: (p: Partial<AppState>) => void
-}) {
-  const [newPin, setNewPin]   = useState('')
-  const [pinSaved, setPinSaved] = useState(false)
-
-  function savePin() {
-    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) return
-    updateState({ pins: { ...state.pins, [role]: newPin } })
-    setNewPin('')
-    setPinSaved(true)
-    setTimeout(() => setPinSaved(false), 2000)
-  }
-
-  function toggleDayOff(r: Role, dayIdx: number) {
-    const current = state.dayOff[r]
-    const next    = current.includes(dayIdx) ? current.filter(d => d !== dayIdx) : [...current, dayIdx]
-    updateState({ dayOff: { ...state.dayOff, [r]: next } })
-  }
-
-  return (
-    <>
-      <div style={S.card}>
-        <div style={{ fontWeight: 600, marginBottom: '10px' }}>Week Start</div>
-        <label style={S.label}>Monday of current week</label>
-        <input type="date" value={state.weekStart}
-          onChange={e => { const d = new Date(e.target.value + 'T00:00:00'); if (d.getDay() === 1) updateState({ weekStart: e.target.value }) }}
-          style={S.input} />
-        <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '6px' }}>Must be a Monday. Changing this resets task statuses.</div>
-      </div>
-
-      <div style={S.card}>
-        <div style={{ fontWeight: 600, marginBottom: '12px' }}>Day-Off Roster</div>
-        {ROLES.map(r => {
-          const c = ROLE_COLORS[r]
-          return (
-            <div key={r} style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: c.dark, marginBottom: '6px' }}>{r} — {ROLE_NAMES[r]}</div>
-              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {DAY_NAMES.map((day, i) => {
-                  const off = state.dayOff[r].includes(i)
-                  return (
-                    <button key={i} onClick={() => toggleDayOff(r, i)} style={{ ...S.btn, padding: '6px 10px', fontSize: '12px', minHeight: '44px', background: off ? '#FEE2E2' : '#F3F4F6', color: off ? '#991B1B' : '#374151', border: `1px solid ${off ? '#FECACA' : '#E5E7EB'}` }}>
-                      {day}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div style={S.card}>
-        <div style={{ fontWeight: 600, marginBottom: '10px' }}>Change Your PIN ({role})</div>
-        <label style={S.label}>New 4-digit PIN</label>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input type="password" inputMode="numeric" maxLength={4} value={newPin}
-            onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            placeholder="••••" style={{ ...S.input, flex: 1, letterSpacing: '0.3em', textAlign: 'center', fontSize: '20px' }} />
-          <button onClick={savePin} style={{ ...S.btn, background: NAV_GREEN, color: '#fff', flexShrink: 0 }}>Save</button>
-        </div>
-        {pinSaved && <div style={{ color: '#166534', fontSize: '13px', marginTop: '8px' }}>✓ PIN updated</div>}
-      </div>
-    </>
   )
 }
 
