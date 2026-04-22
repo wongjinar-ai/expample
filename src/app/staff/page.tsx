@@ -28,6 +28,8 @@ interface AppState {
   dayOff: Record<Role, number[]>
   taskStatus: Record<string, TaskStatus>
   taskOverrides: Record<string, Assignee>
+  taskNotes: Record<string, string>
+  taskMedia: Record<string, string[]>
 }
 
 interface Booking {
@@ -98,6 +100,10 @@ const TX = {
     nights: (n: number) => `${n} night${n !== 1 ? 's' : ''}`,
     secondGuest: 'Second guest name (optional)', save: 'Save', view: 'View',
     takeUpload: '📷 Take / Upload', replace: '📷 Replace',
+    details: 'Details', note: 'Note', notePlaceholder: 'Add a note…',
+    uploadMedia: '📷 Photo / Video', mediaUploading: 'Uploading…',
+    statusLabel: 'Status',
+    sPendingTask: 'Pending', sDoneTask: 'Done', sSkipped: 'Skipped', sNA: 'N/A',
   },
   th: {
     myTasks: 'งานของฉัน', guests: 'แขก', settings: 'ตั้งค่า', signOut: 'ออกจากระบบ',
@@ -142,6 +148,10 @@ const TX = {
     nights: (n: number) => `${n} คืน`,
     secondGuest: 'ชื่อแขกคนที่ 2 (ถ้ามี)', save: 'บันทึก', view: 'ดู',
     takeUpload: '📷 ถ่าย / อัปโหลด', replace: '📷 เปลี่ยน',
+    details: 'รายละเอียด', note: 'บันทึก', notePlaceholder: 'เพิ่มบันทึก…',
+    uploadMedia: '📷 รูป / วิดีโอ', mediaUploading: 'กำลังอัปโหลด…',
+    statusLabel: 'สถานะ',
+    sPendingTask: 'รอดำเนินการ', sDoneTask: 'เสร็จ', sSkipped: 'ข้าม', sNA: 'ไม่เกี่ยว',
   },
 }
 type TXType = typeof TX.en
@@ -179,6 +189,8 @@ const DEFAULT_STATE: AppState = {
   dayOff: { KTC: [6], ACF: [0, 1], GM: [], CEO: [] },
   taskStatus: {},
   taskOverrides: {},
+  taskNotes: {},
+  taskMedia: {},
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -237,6 +249,8 @@ function loadState(): AppState {
       dayOff:        { ...DEFAULT_STATE.dayOff, ...saved.dayOff },
       taskStatus:    saved.taskStatus    ?? {},
       taskOverrides: saved.taskOverrides ?? {},
+      taskNotes:     saved.taskNotes     ?? {},
+      taskMedia:     saved.taskMedia     ?? {},
     }
   } catch { return { ...DEFAULT_STATE } }
 }
@@ -447,6 +461,15 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
     updateState({ taskStatus: { ...state.taskStatus, [k]: status } })
   }
 
+  function noteKey(taskIdx: number): string { return taskStatusKey(state.weekStart, role, taskIdx, dayIdx) }
+  function getNote(taskIdx: number): string { return (state.taskNotes ?? {})[noteKey(taskIdx)] ?? '' }
+  function setNote(taskIdx: number, n: string) { updateState({ taskNotes: { ...(state.taskNotes ?? {}), [noteKey(taskIdx)]: n } }) }
+  function getMedia(taskIdx: number): string[] { return (state.taskMedia ?? {})[noteKey(taskIdx)] ?? [] }
+  function addMedia(taskIdx: number, url: string) {
+    const k = noteKey(taskIdx)
+    updateState({ taskMedia: { ...(state.taskMedia ?? {}), [k]: [...getMedia(taskIdx), url] } })
+  }
+
   const done      = visibleTasks.filter(({ idx }) => getStatus(idx) === 'done').length
   const total     = visibleTasks.length
   const remaining = visibleTasks.filter(({ idx }) => getStatus(idx) === 'pending').length
@@ -506,7 +529,10 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
                 <div style={S.sectionLabel}>{section}</div>
                 {sectionTasks.map(({ task, idx }) => (
                   <TaskCard key={idx} task={task} taskIdx={idx} dayIdx={dayIdx}
-                    status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)} T={T} />
+                    status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)}
+                    note={getNote(idx)} onNoteChange={n => setNote(idx, n)}
+                    mediaUrls={getMedia(idx)} onAddMedia={url => addMedia(idx, url)}
+                    T={T} />
                 ))}
               </div>
             )
@@ -606,18 +632,52 @@ function NoDeadlineSection({ role, state, updateState, T }: {
 
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, T }: {
+const STATUS_META: Record<TaskStatus, { label: keyof TXType; color: string; bg: string }> = {
+  pending:  { label: 'sPendingTask', color: '#9CA3AF', bg: '#F3F4F6' },
+  done:     { label: 'sDoneTask',    color: '#166534', bg: '#DCFCE7' },
+  skipped:  { label: 'sSkipped',     color: '#92400E', bg: '#FEF9C3' },
+  na:       { label: 'sNA',          color: '#6B7280', bg: '#F3F4F6' },
+}
+
+function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, note, onNoteChange, mediaUrls, onAddMedia, T }: {
   task: typeof TASKS[number]; taskIdx: number; dayIdx: number
-  status: TaskStatus; onSetStatus: (s: TaskStatus) => void; T: TXType
+  status: TaskStatus; onSetStatus: (s: TaskStatus) => void
+  note: string; onNoteChange: (n: string) => void
+  mediaUrls: string[]; onAddMedia: (url: string) => void
+  T: TXType
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded]     = useState(false)
+  const [uploading, setUploading]   = useState(false)
+  const [localNote, setLocalNote]   = useState(note)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const supabase = createClient()
+
   const assignee = task.days[dayIdx]
   const isShared = assignee === 'Anyone Free' || assignee === 'All Staff'
   const isDone   = status === 'done'
   const isDimmed = status === 'skipped' || status === 'na'
+  const sm       = STATUS_META[status]
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const ext  = file.name.split('.').pop()
+    const path = `task-media/${taskIdx}_${dayIdx}_${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('booking-docs').upload(path, file, { upsert: false })
+    if (!error) {
+      const { data } = supabase.storage.from('booking-docs').getPublicUrl(path)
+      onAddMedia(data.publicUrl)
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const isVideo = (url: string) => /\.(mp4|mov|webm|avi)$/i.test(url)
 
   return (
-    <div style={{ ...S.card, padding: '0', overflow: 'hidden', opacity: isDimmed ? 0.55 : 1, border: isDone ? '1px solid #BBF7D0' : '1px solid transparent' }}>
+    <div style={{ ...S.card, padding: 0, overflow: 'hidden', opacity: isDimmed ? 0.6 : 1, border: isDone ? '1px solid #BBF7D0' : '1px solid transparent' }}>
+      {/* Header row */}
       <div onClick={() => setExpanded(e => !e)}
         style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', cursor: 'pointer', minHeight: '44px' }}>
         <div style={{ width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, background: isDone ? '#22C55E' : '#fff', border: isDone ? 'none' : '2px solid #D1D5DB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -628,17 +688,71 @@ function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, T }: {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {isShared && <span style={{ ...S.pill, background: '#FEF9C3', color: '#92400E', fontSize: '10px' }}>shared</span>}
+          <span style={{ ...S.pill, background: sm.bg, color: sm.color, fontSize: '10px' }}>{T[sm.label] as string}</span>
           <span style={{ fontSize: '11px', color: '#9CA3AF' }}>{SLOT_LABELS[timeToSlot(task.time)]}</span>
+          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
+
       {expanded && (
-        <div style={{ display: 'flex', gap: '6px', padding: '0 16px 14px', borderTop: '1px solid #F3F4F6' }}>
-          <ActionBtn label={T.done}  color="#22C55E" active={status === 'done'}    onClick={() => { onSetStatus(status === 'done'    ? 'pending' : 'done');    setExpanded(false) }} />
-          <ActionBtn label={T.skip}  color="#F59E0B" active={status === 'skipped'} onClick={() => { onSetStatus(status === 'skipped' ? 'pending' : 'skipped'); setExpanded(false) }} />
-          <ActionBtn label={T.na}    color="#9CA3AF" active={status === 'na'}      onClick={() => { onSetStatus(status === 'na'      ? 'pending' : 'na');      setExpanded(false) }} />
-          {status !== 'pending' && (
-            <ActionBtn label={T.undo} color="#EF4444" active={false} onClick={() => { onSetStatus('pending'); setExpanded(false) }} />
+        <div style={{ borderTop: '1px solid #F3F4F6' }}>
+          {/* Task instructions */}
+          {task.instructions && task.instructions.length > 0 && (
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#6B7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{T.details}</div>
+              <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {task.instructions.map((step, i) => (
+                  <li key={i} style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5 }}>{step}</li>
+                ))}
+              </ol>
+            </div>
           )}
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid #F3F4F6' }}>
+            <ActionBtn label={T.done}  color="#22C55E" active={status === 'done'}    onClick={() => onSetStatus(status === 'done'    ? 'pending' : 'done')}    />
+            <ActionBtn label={T.skip}  color="#F59E0B" active={status === 'skipped'} onClick={() => onSetStatus(status === 'skipped' ? 'pending' : 'skipped')} />
+            <ActionBtn label={T.na}    color="#9CA3AF" active={status === 'na'}      onClick={() => onSetStatus(status === 'na'      ? 'pending' : 'na')}      />
+            {status !== 'pending' && (
+              <ActionBtn label={T.undo} color="#EF4444" active={false} onClick={() => onSetStatus('pending')} />
+            )}
+          </div>
+
+          {/* Note */}
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #F3F4F6' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#6B7280', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{T.note}</div>
+            <textarea
+              value={localNote}
+              onChange={e => setLocalNote(e.target.value)}
+              onBlur={() => onNoteChange(localNote)}
+              placeholder={T.notePlaceholder}
+              rows={3}
+              style={{ width: '100%', borderRadius: '8px', border: '1px solid #E5E7EB', padding: '8px 10px', fontSize: '13px', fontFamily: '"DM Sans", sans-serif', resize: 'vertical', outline: 'none', boxSizing: 'border-box', color: '#374151', background: '#FAFAFA' }}
+            />
+          </div>
+
+          {/* Media upload */}
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#6B7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{T.uploadMedia}</div>
+            <input ref={fileRef} type="file" accept="image/*,video/*" capture="environment" style={{ display: 'none' }} onChange={handleFileChange} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              style={{ ...S.btn, background: '#F0FDF4', color: NAV_GREEN, border: `1px solid #BBF7D0`, padding: '8px 14px', fontSize: '13px', minHeight: '40px', opacity: uploading ? 0.6 : 1 }}>
+              {uploading ? T.mediaUploading : T.uploadMedia}
+            </button>
+
+            {/* Media thumbnails */}
+            {mediaUrls.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                {mediaUrls.map((url, i) => (
+                  isVideo(url)
+                    ? <video key={i} src={url} controls style={{ width: '100px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #E5E7EB' }} />
+                    : <img  key={i} src={url} alt="" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #E5E7EB', cursor: 'pointer' }} onClick={() => window.open(url, '_blank')} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
