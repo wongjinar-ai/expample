@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback, useRef, createContext, useContext } f
 import { createClient } from '@/lib/supabase/client'
 import { TASKS, timeToSlot, SLOT_LABELS } from './tasks'
 import type { Assignee } from './tasks'
+import { DEFAULT_RECIPES } from './recipes'
+import type { Recipe } from './recipes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Role       = 'KTC' | 'ACF' | 'GM' | 'CEO'
 type TaskStatus = 'pending' | 'done' | 'skipped' | 'na'
-type AppTab     = 'tasks' | 'bookings' | 'settings'
+type AppTab     = 'tasks' | 'bookings' | 'recipes' | 'settings'
 type Lang       = 'en' | 'th'
 
 interface NoDeadlineCustomTask {
@@ -105,6 +107,15 @@ const TX = {
     statusLabel: 'Status',
     sPendingTask: 'Pending', sDoneTask: 'Done', sSkipped: 'Skipped', sNA: 'N/A',
     listView: 'List', timetable: 'Timetable',
+    recipes: 'Recipes',
+    recipeSearch: 'Search recipes…',
+    prepTime: 'Prep', cookTime: 'Cook', servings: 'Servings',
+    baseFor: 'Base recipe for',
+    adjustPortions: 'Adjust portions',
+    ingredientsList: 'Ingredients', stepsList: 'Steps',
+    viewRecipe: '📖 Recipe',
+    noRecipes: 'No recipes found.',
+    min: 'min',
   },
   th: {
     myTasks: 'งานของฉัน', guests: 'แขก', settings: 'ตั้งค่า', signOut: 'ออกจากระบบ',
@@ -154,6 +165,15 @@ const TX = {
     statusLabel: 'สถานะ',
     sPendingTask: 'รอดำเนินการ', sDoneTask: 'เสร็จ', sSkipped: 'ข้าม', sNA: 'ไม่เกี่ยว',
     listView: 'รายการ', timetable: 'ตารางเวลา',
+    recipes: 'สูตรอาหาร',
+    recipeSearch: 'ค้นหาสูตร…',
+    prepTime: 'เตรียม', cookTime: 'ปรุง', servings: 'จำนวน',
+    baseFor: 'สูตรพื้นฐานสำหรับ',
+    adjustPortions: 'ปรับจำนวนที่ต้องการ',
+    ingredientsList: 'ส่วนผสม', stepsList: 'ขั้นตอน',
+    viewRecipe: '📖 ดูสูตร',
+    noRecipes: 'ไม่พบสูตรอาหาร',
+    min: 'นาที',
   },
 }
 type TXType = typeof TX.en
@@ -400,6 +420,7 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
   const tabs: { id: AppTab; label: string }[] = [
     { id: 'tasks',    label: T.myTasks },
     { id: 'bookings', label: T.guests },
+    { id: 'recipes',  label: T.recipes },
     { id: 'settings', label: T.settings },
   ]
 
@@ -430,6 +451,7 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
         <div style={S.body}>
           {tab === 'tasks'    && <TasksTab role={role} state={state} weekDates={weekDates} updateState={updateState} T={T} />}
           {tab === 'bookings' && <BookingsTab initialWeekStart={state.weekStart} T={T} />}
+          {tab === 'recipes'  && <RecipesTab T={T} />}
           {tab === 'settings' && <SettingsTab role={role} state={state} updateState={updateState} T={T} />}
         </div>
       </div>
@@ -457,7 +479,7 @@ const SLOT_DOT: Record<ReturnType<typeof timeToSlot>, string> = {
   'Evening':   '#8B5CF6',
 }
 
-function TimetableView({ tasks, dayIdx, getStatus, onSetStatus, getNote, onNoteChange, getMedia, onAddMedia, T }: {
+function TimetableView({ tasks, dayIdx, getStatus, onSetStatus, getNote, onNoteChange, getMedia, onAddMedia, getLinkedRecipes, T }: {
   tasks: Array<{ task: typeof TASKS[number]; idx: number }>
   dayIdx: number
   getStatus: (i: number) => TaskStatus
@@ -466,6 +488,7 @@ function TimetableView({ tasks, dayIdx, getStatus, onSetStatus, getNote, onNoteC
   onNoteChange: (i: number, n: string) => void
   getMedia: (i: number) => string[]
   onAddMedia: (i: number, url: string) => void
+  getLinkedRecipes: (name: string) => Recipe[]
   T: TXType
 }) {
   // Sort by time then group
@@ -509,6 +532,7 @@ function TimetableView({ tasks, dayIdx, getStatus, onSetStatus, getNote, onNoteC
                   status={getStatus(idx)} onSetStatus={s => onSetStatus(idx, s)}
                   note={getNote(idx)} onNoteChange={n => onNoteChange(idx, n)}
                   mediaUrls={getMedia(idx)} onAddMedia={url => onAddMedia(idx, url)}
+                  linkedRecipes={getLinkedRecipes(task.name)}
                   T={T}
                 />
               ))}
@@ -554,6 +578,9 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
   function addMedia(taskIdx: number, url: string) {
     const k = noteKey(taskIdx)
     updateState({ taskMedia: { ...(state.taskMedia ?? {}), [k]: [...getMedia(taskIdx), url] } })
+  }
+  function getLinkedRecipes(taskName: string): Recipe[] {
+    return DEFAULT_RECIPES.filter(r => r.linkedTasks?.includes(taskName))
   }
 
   const done      = visibleTasks.filter(({ idx }) => getStatus(idx) === 'done').length
@@ -633,6 +660,7 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
                         status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)}
                         note={getNote(idx)} onNoteChange={n => setNote(idx, n)}
                         mediaUrls={getMedia(idx)} onAddMedia={url => addMedia(idx, url)}
+                        linkedRecipes={getLinkedRecipes(task.name)}
                         T={T} />
                     ))}
                   </div>
@@ -648,6 +676,7 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
               getStatus={getStatus} onSetStatus={(i, s) => setStatus(i, s)}
               getNote={getNote} onNoteChange={(i, n) => setNote(i, n)}
               getMedia={getMedia} onAddMedia={(i, url) => addMedia(i, url)}
+              getLinkedRecipes={getLinkedRecipes}
               T={T}
             />
           )}
@@ -747,16 +776,18 @@ const STATUS_META: Record<TaskStatus, { label: keyof TXType; color: string; bg: 
   na:       { label: 'sNA',          color: '#6B7280', bg: '#F3F4F6' },
 }
 
-function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, note, onNoteChange, mediaUrls, onAddMedia, T }: {
+function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, note, onNoteChange, mediaUrls, onAddMedia, linkedRecipes = [], T }: {
   task: typeof TASKS[number]; taskIdx: number; dayIdx: number
   status: TaskStatus; onSetStatus: (s: TaskStatus) => void
   note: string; onNoteChange: (n: string) => void
   mediaUrls: string[]; onAddMedia: (url: string) => void
+  linkedRecipes?: Recipe[]
   T: TXType
 }) {
-  const [expanded, setExpanded]     = useState(false)
-  const [uploading, setUploading]   = useState(false)
-  const [localNote, setLocalNote]   = useState(note)
+  const [expanded, setExpanded]       = useState(false)
+  const [recipeModal, setRecipeModal] = useState<Recipe | null>(null)
+  const [uploading, setUploading]     = useState(false)
+  const [localNote, setLocalNote]     = useState(note)
   const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
@@ -861,7 +892,24 @@ function TaskCard({ task, taskIdx, dayIdx, status, onSetStatus, note, onNoteChan
               </div>
             )}
           </div>
+
+          {/* Linked Recipes */}
+          {linkedRecipes.length > 0 && (
+            <div style={{ padding: '12px 16px', borderTop: '1px solid #F3F4F6', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {linkedRecipes.map(r => (
+                <button key={r.id} onClick={() => setRecipeModal(r)}
+                  style={{ ...S.btn, background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA', padding: '8px 14px', fontSize: '13px', minHeight: '40px' }}>
+                  📖 {r.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Recipe Modal */}
+      {recipeModal && (
+        <RecipeModal recipe={recipeModal} onClose={() => setRecipeModal(null)} T={T} />
       )}
     </div>
   )
@@ -1298,6 +1346,205 @@ function PendingRequestsCard({ T }: { T: TXType }) {
         })
       )}
     </div>
+  )
+}
+
+// ─── Recipe Modal ─────────────────────────────────────────────────────────────
+
+function fmtAmount(n: number): string {
+  if (n === 0) return ''
+  const rounded = Math.round(n * 10) / 10
+  return rounded % 1 === 0 ? String(rounded) : String(rounded)
+}
+
+function RecipeModal({ recipe, onClose, T }: { recipe: Recipe; onClose: () => void; T: TXType }) {
+  const [portions, setPortions] = useState(recipe.baseServings)
+  const ratio = portions / recipe.baseServings
+
+  function scaledAmount(amount: number): string {
+    if (amount === 0) return ''
+    return fmtAmount(amount * ratio)
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200 }} />
+      {/* Sheet */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
+        background: '#fff', borderRadius: '20px 20px 0 0',
+        maxHeight: '90vh', overflowY: 'auto',
+        padding: '0 0 32px',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+      }}>
+        {/* Drag handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 0' }}>
+          <div style={{ width: '36px', height: '4px', borderRadius: '2px', background: '#E5E7EB' }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ padding: '12px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>{recipe.name}</div>
+            <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px', lineHeight: 1.4 }}>{recipe.description}</div>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+              {recipe.prepTime > 0 && (
+                <span style={{ fontSize: '12px', color: '#374151' }}>⏱ {T.prepTime} {recipe.prepTime} {T.min}</span>
+              )}
+              {recipe.cookTime > 0 && (
+                <span style={{ fontSize: '12px', color: '#374151' }}>🔥 {T.cookTime} {recipe.cookTime} {T.min}</span>
+              )}
+              {recipe.tags?.map(tag => (
+                <span key={tag} style={{ ...S.pill, background: '#F0FDF4', color: NAV_GREEN, fontSize: '10px' }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: '#F3F4F6', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px', flexShrink: 0, marginLeft: '12px' }}>✕</button>
+        </div>
+
+        {/* Portion Calculator */}
+        <div style={{ margin: '16px 20px 0', padding: '14px 16px', background: '#FFFBEB', borderRadius: '12px', border: '1px solid #FDE68A' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+            🧮 {T.adjustPortions}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button onClick={() => setPortions(p => Math.max(1, p - 1))}
+              style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid #F59E0B', background: '#fff', fontSize: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#92400E', fontWeight: 700 }}>−</button>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <input
+                type="number" min={1} max={200} value={portions}
+                onChange={e => setPortions(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ width: '70px', textAlign: 'center', fontSize: '22px', fontWeight: 700, border: '2px solid #F59E0B', borderRadius: '10px', padding: '6px 8px', color: '#92400E', background: '#fff', fontFamily: '"DM Sans", sans-serif' }}
+              />
+              <div style={{ fontSize: '11px', color: '#92400E', marginTop: '2px' }}>
+                {portions} {recipe.servingUnit}
+                {portions !== recipe.baseServings && (
+                  <span style={{ marginLeft: '6px', opacity: 0.7 }}>({T.baseFor} {recipe.baseServings})</span>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setPortions(p => p + 1)}
+              style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid #F59E0B', background: '#fff', fontSize: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#92400E', fontWeight: 700 }}>+</button>
+          </div>
+        </div>
+
+        {/* Ingredients */}
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            🥬 {T.ingredientsList}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {recipe.ingredients.map((ing, i) => {
+              const isSeparator = ing.amount === 0 && ing.unit === ''
+              if (isSeparator) return (
+                <div key={i} style={{ fontSize: '11px', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '10px', paddingBottom: '2px' }}>
+                  {ing.name.replace(/^—\s*/, '').replace(/\s*—$/, '')}
+                </div>
+              )
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: i % 2 === 0 ? '#F9FAFB' : '#fff' }}>
+                  <span style={{ flex: 1, fontSize: '14px', color: '#374151' }}>{ing.name}</span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#111827', minWidth: '80px', textAlign: 'right' }}>
+                    {scaledAmount(ing.amount)} <span style={{ fontSize: '12px', fontWeight: 400, color: '#6B7280' }}>{ing.unit}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Steps */}
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            👨‍🍳 {T.stepsList}
+          </div>
+          <ol style={{ margin: 0, paddingLeft: '0', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recipe.steps.map((step, i) => (
+              <li key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                <span style={{ flexShrink: 0, width: '26px', height: '26px', borderRadius: '50%', background: NAV_GREEN, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, marginTop: '1px' }}>{i + 1}</span>
+                <span style={{ fontSize: '14px', color: '#374151', lineHeight: 1.55, paddingTop: '2px' }}>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Recipes Tab ──────────────────────────────────────────────────────────────
+
+function RecipesTab({ T }: { T: TXType }) {
+  const [search, setSearch]           = useState('')
+  const [selected, setSelected]       = useState<Recipe | null>(null)
+
+  const filtered = DEFAULT_RECIPES.filter(r =>
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.tags ?? []).some(tag => tag.toLowerCase().includes(search.toLowerCase()))
+  )
+
+  const TAG_COLOR: Record<string, { bg: string; color: string }> = {
+    Bakery:          { bg: '#FEF9C3', color: '#92400E' },
+    Dairy:           { bg: '#DBEAFE', color: '#1D4ED8' },
+    Ferment:         { bg: '#EDE9FE', color: '#6D28D9' },
+    Salad:           { bg: '#DCFCE7', color: '#166534' },
+    Dessert:         { bg: '#FCE7F3', color: '#9D174D' },
+    Sauce:           { bg: '#FEE2E2', color: '#991B1B' },
+    Fresh:           { bg: '#ECFDF5', color: '#065F46' },
+    Breakfast:       { bg: '#FFF7ED', color: '#C2410C' },
+    Drinks:          { bg: '#E0F2FE', color: '#0369A1' },
+    Protein:         { bg: '#F0FDF4', color: '#15803D' },
+    Thai:            { bg: '#FFF7ED', color: '#B45309' },
+    Hearty:          { bg: '#F5F3FF', color: '#5B21B6' },
+    Signature:       { bg: '#FDF2F8', color: '#86198F' },
+  }
+
+  return (
+    <>
+      {/* Search */}
+      <div style={{ marginBottom: '14px' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder={T.recipeSearch}
+          style={{ ...S.input, paddingLeft: '36px', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%239CA3AF\' stroke-width=\'2\'%3E%3Ccircle cx=\'11\' cy=\'11\' r=\'8\'/%3E%3Cpath d=\'m21 21-4.35-4.35\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: '10px center' }}
+        />
+      </div>
+
+      {/* Recipe cards */}
+      {filtered.length === 0 ? (
+        <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>{T.noRecipes}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {filtered.map(recipe => (
+            <div key={recipe.id} onClick={() => setSelected(recipe)}
+              style={{ ...S.card, cursor: 'pointer', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '3px' }}>{recipe.name}</div>
+                <div style={{ fontSize: '12px', color: '#6B7280', lineHeight: 1.4, marginBottom: '8px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {recipe.description}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                  {recipe.tags?.map(tag => {
+                    const tc = TAG_COLOR[tag] ?? { bg: '#F3F4F6', color: '#6B7280' }
+                    return <span key={tag} style={{ ...S.pill, background: tc.bg, color: tc.color, fontSize: '10px' }}>{tag}</span>
+                  })}
+                </div>
+              </div>
+              <div style={{ flexShrink: 0, textAlign: 'right', fontSize: '11px', color: '#9CA3AF' }}>
+                {recipe.prepTime + recipe.cookTime > 0 && (
+                  <div>⏱ {recipe.prepTime + recipe.cookTime} {T.min}</div>
+                )}
+                <div style={{ marginTop: '2px' }}>{recipe.baseServings} {recipe.servingUnit}</div>
+                <div style={{ fontSize: '18px', marginTop: '6px' }}>›</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selected && <RecipeModal recipe={selected} onClose={() => setSelected(null)} T={T} />}
+    </>
   )
 }
 
