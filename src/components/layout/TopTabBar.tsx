@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-export type Tab = 'dashboard' | 'rooms' | 'income' | 'cleaning' | 'shifts'
+export type Tab = 'dashboard' | 'rooms' | 'income' | 'cleaning' | 'shifts' | 'cookbook'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -11,6 +11,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'income',    label: 'Income & OTA' },
   { id: 'cleaning',  label: 'Cleaning plan' },
   { id: 'shifts',    label: 'Staff shifts' },
+  { id: 'cookbook',  label: 'Cook Book' },
 ]
 
 export default function TopTabBar({

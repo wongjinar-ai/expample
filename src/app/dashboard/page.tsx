@@ -11,6 +11,8 @@ import { ROOMS, OCC_ROOMS, ROOM_TYPES, SOURCES, CLEAN_STATUSES } from '@/lib/con
 import type { Room, Status, CleanStatus, Source } from '@/lib/constants'
 import { TASKS, timeToSlot, SLOT_LABELS } from '@/app/staff/tasks'
 import type { Assignee, Task, SlotType } from '@/app/staff/tasks'
+import { DEFAULT_RECIPES } from '@/app/staff/recipes'
+import type { Recipe } from '@/app/staff/recipes'
 
 // ─── Shared types ──────────────────────────────────────────────────────────────
 
@@ -1105,6 +1107,8 @@ interface HimmapunState {
   taskStatus?: Record<string, TaskStatusVal>
   taskSubmissions?: TaskSubmission[]
   customTasks?: CustomTask[]
+  cookbookRecipes?: Recipe[]
+  taskRecipeLinks?: Record<string, string[]>  // key: taskIdx string, value: recipe IDs
 }
 
 function loadHimmapunState(): HimmapunState {
@@ -1128,6 +1132,27 @@ function loadTaskOverrides(): Record<string, Assignee> {
 
 function saveTaskOverrides(overrides: Record<string, Assignee>) {
   saveHimmapunPatch({ taskOverrides: overrides })
+}
+
+function loadCookbookRecipes(): Recipe[] {
+  const state = loadHimmapunState()
+  if (!state.cookbookRecipes) {
+    saveHimmapunPatch({ cookbookRecipes: DEFAULT_RECIPES })
+    return DEFAULT_RECIPES
+  }
+  return state.cookbookRecipes
+}
+
+function saveCookbookRecipes(recipes: Recipe[]) {
+  saveHimmapunPatch({ cookbookRecipes: recipes })
+}
+
+function loadTaskRecipeLinks(): Record<string, string[]> {
+  return loadHimmapunState().taskRecipeLinks ?? {}
+}
+
+function saveTaskRecipeLinks(links: Record<string, string[]>) {
+  saveHimmapunPatch({ taskRecipeLinks: links })
 }
 
 function getAssigneeForCell(overrides: Record<string, Assignee>, weekStart: string, taskIdx: number, dayIdx: number, fallback?: Assignee): Assignee {
@@ -1174,6 +1199,24 @@ function TaskDetailModal({ task, taskIdx, dayIdx, weekStart, role, onClose }: {
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const videoRef = useRef<HTMLInputElement>(null)
+  const [recipeLinks, setRecipeLinks] = useState<string[]>(() => loadTaskRecipeLinks()[String(taskIdx)] ?? [])
+  const [cookbookRecipes] = useState<Recipe[]>(() => loadCookbookRecipes())
+  const [viewRecipe, setViewRecipe] = useState<Recipe | null>(null)
+
+  function addRecipeLink(id: string) {
+    if (recipeLinks.includes(id)) return
+    const next = [...recipeLinks, id]
+    setRecipeLinks(next)
+    const current = loadTaskRecipeLinks()
+    saveTaskRecipeLinks({ ...current, [String(taskIdx)]: next })
+  }
+
+  function removeRecipeLink(id: string) {
+    const next = recipeLinks.filter(x => x !== id)
+    setRecipeLinks(next)
+    const current = loadTaskRecipeLinks()
+    saveTaskRecipeLinks({ ...current, [String(taskIdx)]: next })
+  }
 
   const existingSub = submissions.find(s => s.taskIdx === taskIdx && s.weekStart === weekStart && s.dayIdx === dayIdx && s.role === role)
 
@@ -1221,6 +1264,7 @@ function TaskDetailModal({ task, taskIdx, dayIdx, weekStart, role, onClose }: {
   const sc = statusColors[status]
 
   return (
+    <>
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', padding: '0 0 32px' }}>
@@ -1287,8 +1331,36 @@ function TaskDetailModal({ task, taskIdx, dayIdx, weekStart, role, onClose }: {
             onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); e.target.value = '' }} />
           <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '8px' }}>Video is sent to GM/CEO for review after upload.</div>
         </div>
+
+        {/* Linked recipes */}
+        <div style={{ padding: '16px 20px', borderTop: '0.5px solid var(--border)' }}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Linked Recipes</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+            {recipeLinks.map(id => {
+              const r = cookbookRecipes.find(x => x.id === id)
+              if (!r) return null
+              return (
+                <span key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '5px 10px', borderRadius: '12px', background: 'rgba(200,232,74,0.12)', color: 'var(--accent)', border: '0.5px solid rgba(200,232,74,0.3)', cursor: 'pointer' }}
+                  onClick={() => setViewRecipe(r)}>
+                  📖 {r.name}
+                  <button onClick={e => { e.stopPropagation(); removeRecipeLink(id) }} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '0', lineHeight: 1, fontSize: '13px' }}>×</button>
+                </span>
+              )
+            })}
+            {recipeLinks.length === 0 && <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>No recipes linked.</span>}
+          </div>
+          <select onChange={e => { const v = e.target.value; if (v) addRecipeLink(v); e.target.value = '' }}
+            style={{ ...INPUT_STYLE, fontSize: '12px' }}>
+            <option value="">+ Attach recipe…</option>
+            {cookbookRecipes.filter(r => !recipeLinks.includes(r.id)).map(r => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
+    {viewRecipe && <RecipeViewModal recipe={viewRecipe} onClose={() => setViewRecipe(null)} />}
+    </>
   )
 }
 
@@ -1304,6 +1376,8 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const [instructions, setInstructions] = useState('')
   const [days, setDays]               = useState<Assignee[]>(['KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC', 'KTC'])
   const [saving, setSaving]           = useState(false)
+  const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>([])
+  const [cookbookRecipes] = useState<Recipe[]>(() => loadCookbookRecipes())
 
   function setDay(i: number, val: Assignee) {
     const next = [...days] as typeof days
@@ -1326,7 +1400,12 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       days: noDeadline ? noDeadlineDays : days as [Assignee, Assignee, Assignee, Assignee, Assignee, Assignee, Assignee],
     }
     const current = loadHimmapunState()
-    saveHimmapunPatch({ customTasks: [...(current.customTasks ?? []), ct] })
+    const newTaskIdx = TASKS.length + (current.customTasks ?? []).length
+    const patch: Partial<HimmapunState> = { customTasks: [...(current.customTasks ?? []), ct] }
+    if (selectedRecipeIds.length > 0) {
+      patch.taskRecipeLinks = { ...(current.taskRecipeLinks ?? {}), [String(newTaskIdx)]: selectedRecipeIds }
+    }
+    saveHimmapunPatch(patch)
     setSaving(false)
     onSaved()
   }
@@ -1391,6 +1470,30 @@ function AddTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </div>
           </div>
         )}
+
+        {/* Attach recipes */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>Attach recipes from Cook Book (optional)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+            {selectedRecipeIds.map(id => {
+              const r = cookbookRecipes.find(x => x.id === id)
+              if (!r) return null
+              return (
+                <span key={id} style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'rgba(200,232,74,0.12)', color: 'var(--accent)', border: '0.5px solid rgba(200,232,74,0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  📖 {r.name}
+                  <button onClick={() => setSelectedRecipeIds(ids => ids.filter(x => x !== id))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '0', lineHeight: 1, fontSize: '13px' }}>×</button>
+                </span>
+              )
+            })}
+          </div>
+          <select onChange={e => { const v = e.target.value; if (v && !selectedRecipeIds.includes(v)) setSelectedRecipeIds(ids => [...ids, v]); e.target.value = '' }}
+            style={{ ...INPUT_STYLE, fontSize: '12px' }}>
+            <option value="">+ Add recipe…</option>
+            {cookbookRecipes.filter(r => !selectedRecipeIds.includes(r.id)).map(r => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </div>
 
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={ACTION_BTN}>Cancel</button>
@@ -1820,6 +1923,301 @@ function ShiftsTab() {
 }
 
 
+// ─── Recipe View Modal ────────────────────────────────────────────────────────
+
+function RecipeViewModal({ recipe, onClose }: { recipe: Recipe; onClose: () => void }) {
+  const [servings, setServings] = useState(recipe.baseServings)
+  const scale = servings / recipe.baseServings
+
+  function fmtAmt(amount: number): string {
+    const scaled = amount * scale
+    return scaled % 1 === 0 ? String(scaled) : scaled.toFixed(1)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', padding: '0 0 40px' }}>
+        <div style={{ padding: '20px 20px 16px', borderBottom: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 10 }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+              {recipe.category} · {recipe.tags?.join(' · ')}
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>{recipe.name}</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{recipe.description}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '20px', padding: '0', lineHeight: 1, flexShrink: 0, marginLeft: '12px' }}>✕</button>
+        </div>
+
+        {/* Time + portion info */}
+        <div style={{ display: 'flex', gap: '8px', padding: '14px 20px', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
+          {recipe.prepTime > 0 && <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>⏱ Prep {recipe.prepTime} min</span>}
+          {recipe.cookTime > 0 && <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>🔥 Cook {recipe.cookTime} min</span>}
+          <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>📦 Base: {recipe.baseServings} {recipe.servingUnit}</span>
+        </div>
+
+        {/* Portion calculator */}
+        <div style={{ padding: '14px 20px', borderBottom: '0.5px solid var(--border)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Portion Calculator</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button onClick={() => setServings(s => Math.max(1, s - 1))} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>−</button>
+            <input type="number" min={1} value={servings} onChange={e => setServings(Math.max(1, parseInt(e.target.value) || 1))}
+              style={{ ...INPUT_STYLE, width: '64px', textAlign: 'center', fontSize: '15px', fontWeight: 600 }} />
+            <button onClick={() => setServings(s => s + 1)} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>+</button>
+            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>{recipe.servingUnit}</span>
+          </div>
+        </div>
+
+        {/* Ingredients */}
+        {recipe.ingredients.length > 0 && (
+          <div style={{ padding: '14px 20px', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Ingredients</div>
+            {recipe.ingredients.map((ing, i) => (
+              ing.amount === 0 ? (
+                <div key={i} style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px', borderTop: i > 0 ? '0.5px solid var(--border)' : 'none' }}>{ing.name}</div>
+              ) : (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: '6px', background: i % 2 === 0 ? 'var(--bg)' : 'transparent', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text)' }}>{ing.name}</span>
+                  <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap', marginLeft: '12px' }}>{fmtAmt(ing.amount)} {ing.unit}</span>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+
+        {/* Steps */}
+        {recipe.steps.length > 0 && (
+          <div style={{ padding: '14px 20px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>Steps</div>
+            <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {recipe.steps.map((step, i) => (
+                <li key={i} style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.55 }}>{step}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Cook Book Tab ────────────────────────────────────────────────────────────
+
+function CookBookTab() {
+  const [recipes, setRecipes] = useState<Recipe[]>(() => loadCookbookRecipes())
+  const [search, setSearch] = useState('')
+  const [viewRecipe, setViewRecipe] = useState<Recipe | null>(null)
+  const [editRecipe, setEditRecipe] = useState<Recipe | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+
+  function refresh() {
+    setRecipes(loadCookbookRecipes())
+  }
+
+  function deleteRecipe(id: string) {
+    if (!confirm('Delete this recipe?')) return
+    const updated = recipes.filter(r => r.id !== id)
+    saveCookbookRecipes(updated)
+    setRecipes(updated)
+  }
+
+  const filtered = recipes.filter(r =>
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.tags ?? []).some(t => t.toLowerCase().includes(search.toLowerCase())) ||
+    r.category.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const categories = ['Kitchen', 'Accommodation & Farm', 'Office'] as const
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>Cook Book</div>
+          <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{recipes.length} recipes · attach to task cards in Staff shifts</div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search recipes…"
+            style={{ ...INPUT_STYLE, fontSize: '12px', minWidth: '180px' }} />
+          <button onClick={() => { setEditRecipe(null); setShowAddForm(true) }}
+            style={{ ...ACTION_BTN, background: 'var(--accent)', color: '#0e0f0e', border: 'none', fontWeight: 600, fontSize: '12px' }}>
+            + Add Recipe
+          </button>
+        </div>
+      </div>
+
+      {/* Recipe grid by category */}
+      {categories.map(cat => {
+        const catRecipes = filtered.filter(r => r.category === cat)
+        if (catRecipes.length === 0) return null
+        return (
+          <div key={cat} style={{ marginBottom: '24px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>{cat}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+              {catRecipes.map(recipe => (
+                <div key={recipe.id} style={{ ...CARD, marginBottom: 0, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                  onClick={() => setViewRecipe(recipe)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', flex: 1, paddingRight: '8px' }}>{recipe.name}</div>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <button onClick={e => { e.stopPropagation(); setEditRecipe(recipe); setShowAddForm(true) }}
+                        style={{ ...ACTION_BTN, fontSize: '11px', padding: '3px 8px', color: 'var(--muted)' }}>Edit</button>
+                      <button onClick={e => { e.stopPropagation(); deleteRecipe(recipe.id) }}
+                        style={{ ...ACTION_BTN, fontSize: '11px', padding: '3px 8px', color: '#f87171', borderColor: 'rgba(248,113,113,0.3)' }}>✕</button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px', lineHeight: 1.4 }}>{recipe.description}</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {(recipe.tags ?? []).map(t => (
+                      <span key={t} style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '10px', background: 'rgba(200,232,74,0.1)', color: 'var(--accent)', border: '0.5px solid rgba(200,232,74,0.25)' }}>{t}</span>
+                    ))}
+                    {recipe.prepTime > 0 && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '10px', background: 'var(--surface2)', color: 'var(--muted)' }}>⏱ {recipe.prepTime}m prep</span>}
+                    {recipe.cookTime > 0 && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '10px', background: 'var(--surface2)', color: 'var(--muted)' }}>🔥 {recipe.cookTime}m cook</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--muted)', fontSize: '13px', fontStyle: 'italic' }}>
+          {search ? 'No recipes match your search.' : 'No recipes yet. Add your first recipe!'}
+        </div>
+      )}
+
+      {viewRecipe && <RecipeViewModal recipe={viewRecipe} onClose={() => setViewRecipe(null)} />}
+      {showAddForm && <RecipeEditModal recipe={editRecipe} onClose={() => { setShowAddForm(false); setEditRecipe(null) }} onSaved={() => { refresh(); setShowAddForm(false); setEditRecipe(null) }} />}
+    </div>
+  )
+}
+
+// ─── Recipe Edit Modal ────────────────────────────────────────────────────────
+
+function RecipeEditModal({ recipe, onClose, onSaved }: { recipe: Recipe | null; onClose: () => void; onSaved: () => void }) {
+  const isEdit = !!recipe
+  const [name, setName]               = useState(recipe?.name ?? '')
+  const [description, setDescription] = useState(recipe?.description ?? '')
+  const [category, setCategory]       = useState<Recipe['category']>(recipe?.category ?? 'Kitchen')
+  const [baseServings, setBaseServings] = useState(recipe?.baseServings ?? 4)
+  const [servingUnit, setServingUnit] = useState(recipe?.servingUnit ?? 'portions')
+  const [prepTime, setPrepTime]       = useState(recipe?.prepTime ?? 0)
+  const [cookTime, setCookTime]       = useState(recipe?.cookTime ?? 0)
+  const [tagsRaw, setTagsRaw]         = useState((recipe?.tags ?? []).join(', '))
+  const [ingredientsRaw, setIngredientsRaw] = useState(
+    (recipe?.ingredients ?? []).map(i => i.amount === 0 ? `--- ${i.name}` : `${i.amount} ${i.unit} ${i.name}`).join('\n')
+  )
+  const [stepsRaw, setStepsRaw] = useState((recipe?.steps ?? []).join('\n'))
+  const [saving, setSaving] = useState(false)
+
+  function save() {
+    if (!name.trim()) return
+    setSaving(true)
+
+    const ingredients = ingredientsRaw.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      if (l.startsWith('---')) return { name: l.replace(/^---\s*/, ''), amount: 0, unit: '' }
+      const m = l.match(/^(\d+\.?\d*)\s+(\S+)\s+(.+)$/)
+      if (m) return { amount: parseFloat(m[1]), unit: m[2], name: m[3] }
+      return { name: l, amount: 0, unit: '' }
+    })
+
+    const updated: Recipe = {
+      id: recipe?.id ?? `recipe_${Date.now()}`,
+      name: name.trim(),
+      description: description.trim(),
+      category,
+      baseServings,
+      servingUnit: servingUnit.trim() || 'portions',
+      prepTime,
+      cookTime,
+      tags: tagsRaw.split(',').map(t => t.trim()).filter(Boolean),
+      ingredients,
+      steps: stepsRaw.split('\n').map(s => s.trim()).filter(Boolean),
+    }
+
+    const current = loadCookbookRecipes()
+    const next = isEdit ? current.map(r => r.id === updated.id ? updated : r) : [...current, updated]
+    saveCookbookRecipes(next)
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: '12px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '16px', fontWeight: 700 }}>{isEdit ? 'Edit Recipe' : 'Add Recipe'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '20px' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Recipe name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. House Sourdough" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Description</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description for the card" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Category</label>
+            <select value={category} onChange={e => setCategory(e.target.value as Recipe['category'])} style={{ ...INPUT_STYLE, width: '100%' }}>
+              <option value="Kitchen">Kitchen</option>
+              <option value="Accommodation & Farm">Accommodation &amp; Farm</option>
+              <option value="Office">Office</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Tags (comma-separated)</label>
+            <input value={tagsRaw} onChange={e => setTagsRaw(e.target.value)} placeholder="Bakery, Daily" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Base servings</label>
+            <input type="number" min={1} value={baseServings} onChange={e => setBaseServings(parseInt(e.target.value) || 1)} style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Serving unit</label>
+            <input value={servingUnit} onChange={e => setServingUnit(e.target.value)} placeholder="portions / loaves / cups…" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Prep time (min)</label>
+            <input type="number" min={0} value={prepTime} onChange={e => setPrepTime(parseInt(e.target.value) || 0)} style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Cook time (min)</label>
+            <input type="number" min={0} value={cookTime} onChange={e => setCookTime(parseInt(e.target.value) || 0)} style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+            Ingredients (one per line: <code style={{ fontSize: '10px' }}>amount unit name</code> · use <code style={{ fontSize: '10px' }}>--- Section</code> for separators)
+          </label>
+          <textarea value={ingredientsRaw} onChange={e => setIngredientsRaw(e.target.value)} rows={7}
+            placeholder={'500 g Bread flour\n150 g Sourdough starter\n--- Filling\n200 ml Whole milk'}
+            style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'var(--font-dm-mono)', fontSize: '12px' }} />
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Steps (one per line)</label>
+          <textarea value={stepsRaw} onChange={e => setStepsRaw(e.target.value)} rows={6}
+            placeholder={'Mix flour and water\nAdd starter and salt\nBake at 250°C'}
+            style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: '12px' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={ACTION_BTN}>Cancel</button>
+          <button onClick={save} disabled={saving || !name.trim()} style={{ ...ACTION_BTN, background: 'var(--accent)', color: '#0e0f0e', border: 'none', fontWeight: 600 }}>
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Recipe'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Root page (with useSearchParams — must be wrapped in Suspense) ─────────────
 
 function DashboardPageInner() {
@@ -1843,6 +2241,7 @@ function DashboardPageInner() {
         {activeTab === 'income'    && <IncomeTab />}
         {activeTab === 'cleaning'  && <CleaningTab />}
         {activeTab === 'shifts'    && <ShiftsTab />}
+        {activeTab === 'cookbook'  && <CookBookTab />}
       </div>
     </div>
   )
