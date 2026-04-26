@@ -11,6 +11,7 @@ export interface Recipe {
   category: 'Accommodation & Farm' | 'Kitchen' | 'Office'
   baseServings: number
   servingUnit: string   // 'portions' | 'loaves' | 'jars' | 'slices' …
+  portionsPerBatch?: number  // how many guests one full batch covers (for auto-scaling)
   prepTime: number      // minutes
   cookTime: number      // minutes
   ingredients: Ingredient[]

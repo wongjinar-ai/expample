@@ -1926,18 +1926,53 @@ function ShiftsTab() {
 // ─── Recipe View Modal ────────────────────────────────────────────────────────
 
 function RecipeViewModal({ recipe, onClose }: { recipe: Recipe; onClose: () => void }) {
-  const [servings, setServings] = useState(recipe.baseServings)
-  const scale = servings / recipe.baseServings
+  const hasBatchMode = !!recipe.portionsPerBatch
+  const [mode, setMode]             = useState<'custom' | 'guests'>(hasBatchMode ? 'guests' : 'custom')
+  const [servings, setServings]     = useState(recipe.baseServings)
+  const [guestCount, setGuestCount] = useState<number>(0)
+  const [loadingGuests, setLoadingGuests] = useState(hasBatchMode)
+
+  // Fetch today's guest count from bookings
+  useEffect(() => {
+    if (!hasBatchMode) return
+    const today = localDateStr(new Date())
+    createClient()
+      .from('bookings')
+      .select('guests, checkin, checkout, status')
+      .then(({ data }) => {
+        if (!data) return
+        const total = data
+          .filter(b => b.checkin <= today && b.checkout > today && ['Occupied', 'Check-in', 'Checkout'].includes(b.status))
+          .reduce((s: number, b: { guests: number }) => s + (b.guests || 1), 0)
+        setGuestCount(total)
+        setLoadingGuests(false)
+      })
+  }, [hasBatchMode])
+
+  const portionsPerBatch = recipe.portionsPerBatch ?? 1
+  const batches = mode === 'guests' ? Math.max(1, Math.ceil(guestCount / portionsPerBatch)) : null
+  const scale   = mode === 'guests'
+    ? (batches ?? 1)
+    : servings / recipe.baseServings
 
   function fmtAmt(amount: number): string {
     const scaled = amount * scale
     return scaled % 1 === 0 ? String(scaled) : scaled.toFixed(1)
   }
 
+  const modeTabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '7px 0', fontSize: '12px', fontWeight: active ? 600 : 400,
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? '#0e0f0e' : 'var(--muted)',
+    border: 'none', cursor: 'pointer', borderRadius: '6px', transition: 'all 0.15s',
+  })
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', padding: '0 0 40px' }}>
+
+        {/* Header */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 10 }}>
           <div>
             <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
@@ -1949,29 +1984,88 @@ function RecipeViewModal({ recipe, onClose }: { recipe: Recipe; onClose: () => v
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '20px', padding: '0', lineHeight: 1, flexShrink: 0, marginLeft: '12px' }}>✕</button>
         </div>
 
-        {/* Time + portion info */}
+        {/* Time info */}
         <div style={{ display: 'flex', gap: '8px', padding: '14px 20px', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
           {recipe.prepTime > 0 && <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>⏱ Prep {recipe.prepTime} min</span>}
           {recipe.cookTime > 0 && <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>🔥 Cook {recipe.cookTime} min</span>}
-          <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>📦 Base: {recipe.baseServings} {recipe.servingUnit}</span>
+          <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>📦 1 batch = {recipe.baseServings} {recipe.servingUnit}</span>
+          {hasBatchMode && <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', background: 'var(--bg)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>👥 serves {portionsPerBatch} guests/batch</span>}
         </div>
 
-        {/* Portion calculator */}
+        {/* Mode toggle + calculator */}
         <div style={{ padding: '14px 20px', borderBottom: '0.5px solid var(--border)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Portion Calculator</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button onClick={() => setServings(s => Math.max(1, s - 1))} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>−</button>
-            <input type="number" min={1} value={servings} onChange={e => setServings(Math.max(1, parseInt(e.target.value) || 1))}
-              style={{ ...INPUT_STYLE, width: '64px', textAlign: 'center', fontSize: '15px', fontWeight: 600 }} />
-            <button onClick={() => setServings(s => s + 1)} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>+</button>
-            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>{recipe.servingUnit}</span>
-          </div>
+
+          {/* Toggle */}
+          {hasBatchMode && (
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg)', borderRadius: '8px', padding: '3px', marginBottom: '14px', border: '0.5px solid var(--border)' }}>
+              <button style={modeTabStyle(mode === 'guests')} onClick={() => setMode('guests')}>For today&apos;s guests</button>
+              <button style={modeTabStyle(mode === 'custom')} onClick={() => setMode('custom')}>Custom</button>
+            </div>
+          )}
+
+          {/* Guest mode */}
+          {mode === 'guests' && hasBatchMode && (
+            <div>
+              {loadingGuests ? (
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Loading guest count…</div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Guests today</span>
+                      <button onClick={() => setGuestCount(g => Math.max(0, g - 1))} style={{ ...ACTION_BTN, width: '28px', padding: '3px', textAlign: 'center' }}>−</button>
+                      <input type="number" min={0} value={guestCount} onChange={e => setGuestCount(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={{ ...INPUT_STYLE, width: '56px', textAlign: 'center', fontWeight: 600 }} />
+                      <button onClick={() => setGuestCount(g => g + 1)} style={{ ...ACTION_BTN, width: '28px', padding: '3px', textAlign: 'center' }}>+</button>
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>÷ {portionsPerBatch} guests/batch</span>
+                  </div>
+
+                  {/* Batch recommendation */}
+                  <div style={{ background: 'rgba(200,232,74,0.08)', border: '0.5px solid rgba(200,232,74,0.3)', borderRadius: '10px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ fontSize: '36px', fontWeight: 800, color: 'var(--accent)', lineHeight: 1 }}>{batches}</div>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>
+                        {batches === 1 ? 'batch' : 'batches'} needed
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                        {guestCount} guests · {batches! * portionsPerBatch} {recipe.servingUnit} total
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Custom mode */}
+          {mode === 'custom' && (
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Batches</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button onClick={() => setServings(s => Math.max(1, s - recipe.baseServings))} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>−</button>
+                <input type="number" min={1} value={servings / recipe.baseServings} onChange={e => setServings(Math.max(1, (parseInt(e.target.value) || 1) * recipe.baseServings))}
+                  style={{ ...INPUT_STYLE, width: '64px', textAlign: 'center', fontSize: '15px', fontWeight: 600 }} />
+                <button onClick={() => setServings(s => s + recipe.baseServings)} style={{ ...ACTION_BTN, width: '32px', padding: '4px', textAlign: 'center', fontSize: '16px' }}>+</button>
+                <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                  {hasBatchMode ? `× ${recipe.baseServings} ${recipe.servingUnit} = ${servings} ${recipe.servingUnit} total` : recipe.servingUnit}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Ingredients */}
         {recipe.ingredients.length > 0 && (
           <div style={{ padding: '14px 20px', borderBottom: '0.5px solid var(--border)' }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Ingredients</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ingredients</div>
+              {scale !== 1 && (
+                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '8px', background: 'rgba(200,232,74,0.12)', color: 'var(--accent)', border: '0.5px solid rgba(200,232,74,0.25)', fontWeight: 600 }}>
+                  ×{scale % 1 === 0 ? scale : scale.toFixed(2)} scaled
+                </span>
+              )}
+            </div>
             {recipe.ingredients.map((ing, i) => (
               ing.amount === 0 ? (
                 <div key={i} style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px', borderTop: i > 0 ? '0.5px solid var(--border)' : 'none' }}>{ing.name}</div>
@@ -2101,10 +2195,11 @@ function RecipeEditModal({ recipe, onClose, onSaved }: { recipe: Recipe | null; 
   const [name, setName]               = useState(recipe?.name ?? '')
   const [description, setDescription] = useState(recipe?.description ?? '')
   const [category, setCategory]       = useState<Recipe['category']>(recipe?.category ?? 'Kitchen')
-  const [baseServings, setBaseServings] = useState(recipe?.baseServings ?? 4)
-  const [servingUnit, setServingUnit] = useState(recipe?.servingUnit ?? 'portions')
-  const [prepTime, setPrepTime]       = useState(recipe?.prepTime ?? 0)
-  const [cookTime, setCookTime]       = useState(recipe?.cookTime ?? 0)
+  const [baseServings, setBaseServings]     = useState(recipe?.baseServings ?? 4)
+  const [servingUnit, setServingUnit]       = useState(recipe?.servingUnit ?? 'portions')
+  const [portionsPerBatch, setPortionsPerBatch] = useState<number | ''>(recipe?.portionsPerBatch ?? '')
+  const [prepTime, setPrepTime]             = useState(recipe?.prepTime ?? 0)
+  const [cookTime, setCookTime]             = useState(recipe?.cookTime ?? 0)
   const [tagsRaw, setTagsRaw]         = useState((recipe?.tags ?? []).join(', '))
   const [ingredientsRaw, setIngredientsRaw] = useState(
     (recipe?.ingredients ?? []).map(i => i.amount === 0 ? `--- ${i.name}` : `${i.amount} ${i.unit} ${i.name}`).join('\n')
@@ -2130,6 +2225,7 @@ function RecipeEditModal({ recipe, onClose, onSaved }: { recipe: Recipe | null; 
       category,
       baseServings,
       servingUnit: servingUnit.trim() || 'portions',
+      ...(portionsPerBatch !== '' && { portionsPerBatch: Number(portionsPerBatch) }),
       prepTime,
       cookTime,
       tags: tagsRaw.split(',').map(t => t.trim()).filter(Boolean),
@@ -2180,6 +2276,15 @@ function RecipeEditModal({ recipe, onClose, onSaved }: { recipe: Recipe | null; 
           <div>
             <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Serving unit</label>
             <input value={servingUnit} onChange={e => setServingUnit(e.target.value)} placeholder="portions / loaves / cups…" style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+              Guests served per batch <span style={{ fontWeight: 400 }}>(optional — enables auto-scaling from today&apos;s guest count)</span>
+            </label>
+            <input type="number" min={1} value={portionsPerBatch}
+              onChange={e => setPortionsPerBatch(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+              placeholder="e.g. 8 — leave blank to skip batch mode"
+              style={{ ...INPUT_STYLE, width: '100%', boxSizing: 'border-box' }} />
           </div>
           <div>
             <label style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Prep time (min)</label>
