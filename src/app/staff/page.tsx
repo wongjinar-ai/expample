@@ -104,6 +104,7 @@ const TX = {
     uploadMedia: '📷 Photo / Video', mediaUploading: 'Uploading…',
     statusLabel: 'Status',
     sPendingTask: 'Pending', sDoneTask: 'Done', sSkipped: 'Skipped', sNA: 'N/A',
+    listView: 'List', timetable: 'Timetable',
   },
   th: {
     myTasks: 'งานของฉัน', guests: 'แขก', settings: 'ตั้งค่า', signOut: 'ออกจากระบบ',
@@ -152,6 +153,7 @@ const TX = {
     uploadMedia: '📷 รูป / วิดีโอ', mediaUploading: 'กำลังอัปโหลด…',
     statusLabel: 'สถานะ',
     sPendingTask: 'รอดำเนินการ', sDoneTask: 'เสร็จ', sSkipped: 'ข้าม', sNA: 'ไม่เกี่ยว',
+    listView: 'รายการ', timetable: 'ตารางเวลา',
   },
 }
 type TXType = typeof TX.en
@@ -435,6 +437,89 @@ function AppShell({ role, onSignOut }: { role: Role; onSignOut: () => void }) {
   )
 }
 
+// ─── Timetable View ───────────────────────────────────────────────────────────
+
+function parseMinutes(time: string): number {
+  const m = time.match(/(\d+)(?::(\d+))?\s*(AM|PM)/i)
+  if (!m) return 0
+  let h = parseInt(m[1])
+  const min = parseInt(m[2] ?? '0')
+  const ap = m[3].toUpperCase()
+  if (ap === 'PM' && h !== 12) h += 12
+  if (ap === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+
+const SLOT_DOT: Record<ReturnType<typeof timeToSlot>, string> = {
+  'Morning':   '#F59E0B',
+  'Mid day':   '#22C55E',
+  'Afternoon': '#3B82F6',
+  'Evening':   '#8B5CF6',
+}
+
+function TimetableView({ tasks, dayIdx, getStatus, onSetStatus, getNote, onNoteChange, getMedia, onAddMedia, T }: {
+  tasks: Array<{ task: typeof TASKS[number]; idx: number }>
+  dayIdx: number
+  getStatus: (i: number) => TaskStatus
+  onSetStatus: (i: number, s: TaskStatus) => void
+  getNote: (i: number) => string
+  onNoteChange: (i: number, n: string) => void
+  getMedia: (i: number) => string[]
+  onAddMedia: (i: number, url: string) => void
+  T: TXType
+}) {
+  // Sort by time then group
+  const sorted = [...tasks].sort((a, b) => parseMinutes(a.task.time) - parseMinutes(b.task.time))
+  const groups: Array<{ time: string; items: typeof sorted }> = []
+  for (const t of sorted) {
+    const last = groups[groups.length - 1]
+    if (last && last.time === t.task.time) last.items.push(t)
+    else groups.push({ time: t.task.time, items: [t] })
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>{T.noTasksDay}</div>
+    )
+  }
+
+  return (
+    <div>
+      {groups.map(({ time, items }, gi) => {
+        const dot = SLOT_DOT[timeToSlot(time)]
+        const isLast = gi === groups.length - 1
+        return (
+          <div key={time} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            {/* Time label */}
+            <div style={{ width: '68px', flexShrink: 0, textAlign: 'right', paddingTop: '15px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{time}</span>
+            </div>
+
+            {/* Dot + connector line */}
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '19px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dot, flexShrink: 0, boxShadow: `0 0 0 3px ${dot}33` }} />
+              {!isLast && <div style={{ width: '2px', flex: 1, background: '#E5E7EB', marginTop: '4px', minHeight: '24px' }} />}
+            </div>
+
+            {/* Task cards */}
+            <div style={{ flex: 1, paddingBottom: isLast ? 0 : '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {items.map(({ task, idx }) => (
+                <TaskCard
+                  key={idx} task={task} taskIdx={idx} dayIdx={dayIdx}
+                  status={getStatus(idx)} onSetStatus={s => onSetStatus(idx, s)}
+                  note={getNote(idx)} onNoteChange={n => onNoteChange(idx, n)}
+                  mediaUrls={getMedia(idx)} onAddMedia={url => onAddMedia(idx, url)}
+                  T={T}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Tasks Tab ────────────────────────────────────────────────────────────────
 
 function TasksTab({ role, state, weekDates, updateState, T }: {
@@ -444,6 +529,7 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
   const today      = todayStr()
   const defaultDay = weekDates.includes(today) ? today : weekDates[0]
   const [selectedDate, setSelectedDate] = useState(defaultDay)
+  const [viewMode, setViewMode]         = useState<'list' | 'timetable'>('list')
   const dayIdx   = weekDates.indexOf(selectedDate)
   const isDayOff = state.dayOff[role].includes(dayIdx)
 
@@ -517,31 +603,53 @@ function TasksTab({ role, state, weekDates, updateState, T }: {
             ))}
           </div>
           {/* Progress */}
-          <div style={{ height: '6px', background: '#E5E7EB', borderRadius: '3px', marginBottom: '16px', overflow: 'hidden' }}>
+          <div style={{ height: '6px', background: '#E5E7EB', borderRadius: '3px', marginBottom: '12px', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#22C55E', borderRadius: '3px', transition: 'width 0.3s' }} />
           </div>
 
-          {sections.map(section => {
-            const sectionTasks = visibleTasks.filter(({ task }) => task.section === section)
-            if (sectionTasks.length === 0) return null
-            return (
-              <div key={section}>
-                <div style={S.sectionLabel}>{section}</div>
-                {sectionTasks.map(({ task, idx }) => (
-                  <TaskCard key={idx} task={task} taskIdx={idx} dayIdx={dayIdx}
-                    status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)}
-                    note={getNote(idx)} onNoteChange={n => setNote(idx, n)}
-                    mediaUrls={getMedia(idx)} onAddMedia={url => addMedia(idx, url)}
-                    T={T} />
-                ))}
-              </div>
-            )
-          })}
+          {/* View toggle */}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+            {(['list', 'timetable'] as const).map(mode => (
+              <button key={mode} onClick={() => setViewMode(mode)} style={{
+                flex: 1, padding: '8px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                background: viewMode === mode ? NAV_GREEN : '#F3F4F6',
+                color:      viewMode === mode ? '#fff' : '#6B7280',
+              }}>
+                {mode === 'list' ? `☰ ${T.listView}` : `🕐 ${T.timetable}`}
+              </button>
+            ))}
+          </div>
 
-          {visibleTasks.length === 0 && (
-            <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>
-              {T.noTasksDay}
-            </div>
+          {viewMode === 'list' ? (
+            <>
+              {sections.map(section => {
+                const sectionTasks = visibleTasks.filter(({ task }) => task.section === section)
+                if (sectionTasks.length === 0) return null
+                return (
+                  <div key={section}>
+                    <div style={S.sectionLabel}>{section}</div>
+                    {sectionTasks.map(({ task, idx }) => (
+                      <TaskCard key={idx} task={task} taskIdx={idx} dayIdx={dayIdx}
+                        status={getStatus(idx)} onSetStatus={s => setStatus(idx, s)}
+                        note={getNote(idx)} onNoteChange={n => setNote(idx, n)}
+                        mediaUrls={getMedia(idx)} onAddMedia={url => addMedia(idx, url)}
+                        T={T} />
+                    ))}
+                  </div>
+                )
+              })}
+              {visibleTasks.length === 0 && (
+                <div style={{ ...S.card, textAlign: 'center', color: '#6B7280', padding: '32px' }}>{T.noTasksDay}</div>
+              )}
+            </>
+          ) : (
+            <TimetableView
+              tasks={visibleTasks} dayIdx={dayIdx}
+              getStatus={getStatus} onSetStatus={(i, s) => setStatus(i, s)}
+              getNote={getNote} onNoteChange={(i, n) => setNote(i, n)}
+              getMedia={getMedia} onAddMedia={(i, url) => addMedia(i, url)}
+              T={T}
+            />
           )}
 
           <NoDeadlineSection role={role} state={state} updateState={updateState} T={T} />
